@@ -1,0 +1,8 @@
+.DS_Store
+__pycache__/
+.agent/
+.agents/skills/
+.claude/skills/
+external/.agents/
+external/.claude/
+local/

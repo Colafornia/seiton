@@ -1,0 +1,4 @@
+interface:
+  display_name: "seiton"
+  short_description: "Manage minimal Skill sets per repository"
+  default_prompt: "Use $seiton to let me choose the Skill set for this repository."

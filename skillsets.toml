@@ -1,0 +1,32 @@
+[profiles.solution-research]
+skills = ["compare-solutions", "parallel-research", "reference-repo"]
+
+[profiles.delivery]
+skills = [
+  "deliver",
+  "shape",
+  "compare-solutions",
+  "debug",
+  "tdd",
+  "review-feedback",
+  "wrap-up",
+]
+
+[profiles.skill-development]
+skills = ["craft-skill"]
+
+[profiles.matt]
+skills = [
+  "setup-matt-pocock-skills",
+  "codebase-design",
+  "diagnosing-bugs",
+  "improve-codebase-architecture",
+  "research",
+  "resolving-merge-conflicts",
+  "wayfinder",
+  "batch-grill-me",
+  "edit-article",
+  "obsidian-vault",
+  "teach",
+  "writing-great-skills",
+]

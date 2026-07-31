@@ -1,0 +1,25 @@
+{
+  "name": "seiton",
+  "version": "0.1.0",
+  "description": "The right skills for every repo.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "seiton": "bin/seiton.mjs"
+  },
+  "files": [
+    "bin/seiton.mjs",
+    "scripts/use.py",
+    "scripts/check.py",
+    "seiton",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.20"
+  },
+  "scripts": {
+    "test": "node --test bin/seiton.test.mjs && python3 -m unittest scripts/test_use.py",
+    "check": "python3 scripts/check.py"
+  }
+}

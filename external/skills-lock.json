@@ -1,0 +1,155 @@
+{
+  "version": 1,
+  "skills": {
+    "batch-grill-me": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/in-progress/batch-grill-me/SKILL.md",
+      "computedHash": "f448831b8f04518b1527408f1d5024384ad5f543bdbaac6fabb7aa053ad60489"
+    },
+    "codebase-design": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/codebase-design/SKILL.md",
+      "computedHash": "6d9d51d8caa01633fd00cf87089c5618c982321f942ac69f62565dc001c6b22f"
+    },
+    "craft-skill": {
+      "source": "Astro-Han/skills",
+      "sourceType": "github",
+      "skillPath": "skills/craft-skill/SKILL.md",
+      "computedHash": "f5f21a483c4b736f5bc57ba3744af09cfba218185a58756f7739899c44cbbbf1"
+    },
+    "debug": {
+      "source": "Astro-Han/skills",
+      "sourceType": "github",
+      "skillPath": "skills/debug/SKILL.md",
+      "computedHash": "30e0bd9a951bada476899ad33f04c739b985f69c29a8b8c0b24759de9b82e715"
+    },
+    "diagnosing-bugs": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/diagnosing-bugs/SKILL.md",
+      "computedHash": "fd6c99466b7ba43be624e6e66ed6d7af2796ded7218f24c83820823977819e22"
+    },
+    "edit-article": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/personal/edit-article/SKILL.md",
+      "computedHash": "cb2a13b2acb6c8a0706eb3a973a2681f30fd74c00784c74ceaa98e12eb2b2fc3"
+    },
+    "goal-writer": {
+      "source": "Astro-Han/skills",
+      "sourceType": "github",
+      "skillPath": "skills/goal-writer/SKILL.md",
+      "computedHash": "d2815017190a3eac13843a540d1299c0201680f7a2f70fa1c78b7a4c92a4afda"
+    },
+    "hunt": {
+      "source": "tw93/Waza",
+      "sourceType": "github",
+      "skillPath": "skills/hunt/SKILL.md",
+      "computedHash": "c9ae2f498fc9ebc64687e51cfcd0f1acd1aaefeb925709401c609012c2482115"
+    },
+    "improve-codebase-architecture": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/improve-codebase-architecture/SKILL.md",
+      "computedHash": "66e8a50c83c3c724fcfe0769701b665c56cec220cc4f49cc1aee8bdfc07de94a"
+    },
+    "learn": {
+      "source": "tw93/Waza",
+      "sourceType": "github",
+      "skillPath": "skills/learn/SKILL.md",
+      "computedHash": "16ddfea68571731dce52de91080210f3a51d25c2530f84b38777baef96c3e3dd"
+    },
+    "learn-anything": {
+      "source": "Astro-Han/skills",
+      "sourceType": "github",
+      "skillPath": "skills/learn-anything/SKILL.md",
+      "computedHash": "3170ad43f390814691def04b1ec851d3b26d8b276c4ea446d543494ca82bf530"
+    },
+    "obsidian-vault": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/personal/obsidian-vault/SKILL.md",
+      "computedHash": "5c08eda96fd76a71793c0a8cb91bef41d518586654a14af4f2edf8f8fd0f96a7"
+    },
+    "parallel-research": {
+      "source": "Astro-Han/skills",
+      "sourceType": "github",
+      "skillPath": "skills/parallel-research/SKILL.md",
+      "computedHash": "f6e160e0dced26f545b12ada6f524a9acee3453dd1134996f011164651a99c70"
+    },
+    "read": {
+      "source": "tw93/Waza",
+      "sourceType": "github",
+      "skillPath": "skills/read/SKILL.md",
+      "computedHash": "33373e10b0dd13d3a4c8e612f5cce0bdf97bc5b2fbbece4bcd57a6d62983d80a"
+    },
+    "research": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/research/SKILL.md",
+      "computedHash": "bd3e2c6826671d82c86ed0da3dac3370ebcf63b0fe847f91bb444e1fb7dac21b"
+    },
+    "resolving-merge-conflicts": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/resolving-merge-conflicts/SKILL.md",
+      "computedHash": "28aad6f8b1b7025abc8892fa8890f68fe1533499b28a565f416b159131d22fad"
+    },
+    "review-feedback": {
+      "source": "Astro-Han/skills",
+      "sourceType": "github",
+      "skillPath": "skills/review-feedback/SKILL.md",
+      "computedHash": "287c36764bdba07bc4e437ad2247a4319de9fb8cf8aced42340af3361fe81c2e"
+    },
+    "setup-matt-pocock-skills": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/setup-matt-pocock-skills/SKILL.md",
+      "computedHash": "74e894a3509e2676d4cdb771c8eace087092430635e845e02a9cc2f757c552a4"
+    },
+    "shape": {
+      "source": "Astro-Han/skills",
+      "sourceType": "github",
+      "skillPath": "skills/shape/SKILL.md",
+      "computedHash": "2082d0ce8d429314559dbddc7629cc120f76048dd390996850295a39313ddc52"
+    },
+    "tdd": {
+      "source": "Astro-Han/skills",
+      "sourceType": "github",
+      "skillPath": "skills/tdd/SKILL.md",
+      "computedHash": "4daa63d2d7963d77da158bc47bc9716ed9afee71b7741184e46813cc5fd51db1"
+    },
+    "teach": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/teach/SKILL.md",
+      "computedHash": "68999bb1a241384b2f921f3321d779b7d05eb6089077b70d88cee2aee3d75ccc"
+    },
+    "think": {
+      "source": "tw93/Waza",
+      "sourceType": "github",
+      "skillPath": "skills/think/SKILL.md",
+      "computedHash": "21f849896707959c1d4241715c8ecefdc4ee2a64601e201f5e1f0d2f8a79b665"
+    },
+    "wayfinder": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/wayfinder/SKILL.md",
+      "computedHash": "c9e18cefd77b6b5b0ee35f59ce2fd96359aa2d2f02e3479e12c873c5402d9d43"
+    },
+    "wrap-up": {
+      "source": "Astro-Han/skills",
+      "sourceType": "github",
+      "skillPath": "skills/wrap-up/SKILL.md",
+      "computedHash": "0e0339233e35db889477652d9bd2fcc1168d26e4ced2c7929552b557eb37a3fa"
+    },
+    "writing-great-skills": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/writing-great-skills/SKILL.md",
+      "computedHash": "4deb21855fb4deeeb1b8217b041faff003fd0c915d24a22f636851c520bc9c5c"
+    }
+  }
+}

@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="680" viewBox="0 0 1200 680" role="img" aria-labelledby="title description">
+  <title id="title">The right skills for every repo</title>
+  <desc id="description">seiton keeps Skills in one central workspace and activates a repository-specific selection for each project.</desc>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 10 5 0 10" fill="none" stroke="#dc5532" stroke-width="1.4"/>
+    </marker>
+    <style>
+      .serif { font-family: Georgia, "Times New Roman", serif; }
+      .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+      .ink { fill: #25221e; }
+      .muted { fill: #746e65; }
+      .faint { fill: #aaa196; }
+      .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 1.2px; }
+      .panel-title { font-size: 22px; font-weight: 700; }
+      .body { font-size: 14px; }
+      .small { font-size: 12px; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="680" fill="#f4efe5"/>
+
+  <text x="56" y="56" class="sans eyebrow muted">A REPOSITORY-SCOPED SKILL WORKSPACE</text>
+  <text x="56" y="112" class="serif ink" font-size="48">The right skills for every repo.</text>
+  <text x="56" y="153" class="sans muted" font-size="17">Use Skills as they are, combine them, or build on them when needed.</text>
+  <line x1="56" y1="190" x2="1144" y2="190" stroke="#d6cec1"/>
+
+  <g aria-label="Central Skill workspace">
+    <rect x="56" y="226" width="380" height="288" rx="5" fill="#fffdf8" stroke="#aaa094"/>
+
+    <text x="84" y="260" class="sans eyebrow muted">CENTRAL WORKSPACE</text>
+    <text x="84" y="288" class="sans panel-title ink">One source of truth</text>
+    <text x="408" y="274" class="sans small muted" text-anchor="end">Maintain once</text>
+    <line x1="84" y1="310" x2="408" y2="310" stroke="#d6cec1"/>
+
+    <text x="84" y="341" class="mono faint" font-size="11">01</text>
+    <text x="136" y="341" class="sans body ink" font-weight="700">Owned Skills</text>
+    <text x="408" y="341" class="sans small muted" text-anchor="end">Maintain directly</text>
+    <line x1="84" y1="358" x2="408" y2="358" stroke="#d6cec1"/>
+
+    <text x="84" y="389" class="mono faint" font-size="11">02</text>
+    <text x="136" y="389" class="sans body ink" font-weight="700">Open-source Skills</text>
+    <text x="408" y="389" class="sans small muted" text-anchor="end">Track source + version</text>
+    <line x1="84" y1="406" x2="408" y2="406" stroke="#d6cec1"/>
+
+    <text x="84" y="437" class="mono faint" font-size="11">03</text>
+    <text x="136" y="437" class="sans body ink" font-weight="700">Private Skills</text>
+    <text x="408" y="437" class="sans small muted" text-anchor="end">Keep local</text>
+
+    <text x="84" y="487" class="sans small muted">Use together</text>
+    <text x="246" y="487" class="sans small muted" text-anchor="middle">Adapt</text>
+    <text x="408" y="487" class="sans small muted" text-anchor="end">Route</text>
+  </g>
+
+  <line x1="436" y1="370" x2="594" y2="370" stroke="#dc5532" marker-end="url(#arrow)"/>
+  <rect x="448" y="302" width="136" height="136" rx="38" fill="#f4efe5"/>
+  <g aria-label="seiton selects, links, and verifies Skills">
+    <rect x="458" y="312" width="116" height="116" rx="28" fill="#dc5532"/>
+    <text x="516" y="367" class="sans" fill="#fffaf4" font-size="21" font-weight="700" text-anchor="middle">seiton</text>
+    <text x="516" y="394" class="sans" fill="#ffe9e0" font-size="9" font-weight="650" letter-spacing=".35" text-anchor="middle">select · link · verify</text>
+  </g>
+
+  <g aria-hidden="true">
+    <rect x="612" y="242" width="516" height="288" rx="5" fill="none" stroke="#d6cec1"/>
+    <rect x="604" y="234" width="516" height="288" rx="5" fill="none" stroke="#d6cec1"/>
+  </g>
+
+  <g aria-label="Repository-specific Skill selection">
+    <rect x="596" y="226" width="516" height="288" rx="5" fill="#fffdf8" stroke="#aaa094"/>
+
+    <text x="624" y="260" class="sans eyebrow muted">REPOSITORY-SPECIFIC SELECTION</text>
+    <text x="624" y="289" class="sans panel-title ink">Only what this repo needs</text>
+    <line x1="624" y1="310" x2="1084" y2="310" stroke="#d6cec1"/>
+
+    <rect x="624" y="329" width="109" height="32" rx="3" fill="#f6ded5"/>
+    <text x="678.5" y="350" class="mono ink" font-size="11" font-weight="700" text-anchor="middle">code-review</text>
+    <rect x="741" y="329" width="46" height="32" rx="3" fill="#f6ded5"/>
+    <text x="764" y="350" class="mono ink" font-size="11" font-weight="700" text-anchor="middle">tdd</text>
+    <line x1="624" y1="380" x2="1084" y2="380" stroke="#d6cec1"/>
+
+    <text x="624" y="414" class="mono ink" font-size="12" font-weight="700">.agents/skills/</text>
+    <text x="624" y="436" class="sans muted" font-size="11">Codex · compatible agents</text>
+
+    <text x="880" y="414" class="mono ink" font-size="12" font-weight="700">.claude/skills/</text>
+    <text x="880" y="436" class="sans muted" font-size="11">Claude Code</text>
+
+    <text x="624" y="474" class="mono faint" font-size="12" font-weight="700">…</text>
+    <text x="624" y="496" class="sans faint" font-size="11">Custom destinations</text>
+  </g>
+
+  <line x1="56" y1="552" x2="1144" y2="552" stroke="#d6cec1"/>
+  <text x="56" y="596" class="serif ink" font-size="23">Maintain centrally. Activate precisely.</text>
+  <text x="56" y="627" class="sans muted" font-size="14">Restore and update open-source Skills from their source. Load them only where they are needed.</text>
+</svg>

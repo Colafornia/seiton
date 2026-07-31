@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>seiton | The right skills for every repo</title>
+  <style>
+    :root {
+      --paper: #f4efe5;
+      --surface: #fffdf8;
+      --ink: #25221e;
+      --muted: #746e65;
+      --faint: #aaa196;
+      --rule: #d6cec1;
+      --border: #aaa094;
+      --accent: #dc5532;
+      --accent-soft: #f6ded5;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      padding: 32px;
+      color: var(--ink);
+      background: #e8e1d5;
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .sheet {
+      width: min(1200px, 100%);
+      min-height: 680px;
+      padding: 48px 54px 36px;
+      overflow: hidden;
+      background: var(--paper);
+      border: 1px solid var(--rule);
+    }
+
+    .eyebrow {
+      margin: 0;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .11em;
+      text-transform: uppercase;
+    }
+
+    header {
+      padding-bottom: 32px;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    h1 {
+      max-width: 700px;
+      margin: 24px 0 16px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(38px, 4vw, 50px);
+      font-weight: 400;
+      line-height: 1.02;
+      letter-spacing: -.025em;
+    }
+
+    .intro {
+      margin: 0;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.5;
+    }
+
+    .diagram {
+      display: grid;
+      grid-template-columns: 380px 160px minmax(430px, 1fr);
+      align-items: center;
+      min-height: 326px;
+      margin-top: 30px;
+    }
+
+    .panel {
+      position: relative;
+      z-index: 2;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+    }
+
+    .catalog {
+      padding: 24px 28px 20px;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 20px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    h2 {
+      margin: 7px 0 0;
+      font-size: 22px;
+      line-height: 1.2;
+    }
+
+    .panel-note {
+      flex: 0 0 auto;
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .catalog-list {
+      margin: 0;
+    }
+
+    .catalog-row {
+      display: grid;
+      grid-template-columns: 32px 1fr auto;
+      gap: 12px;
+      align-items: center;
+      min-height: 48px;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .catalog-row:last-child {
+      border-bottom: 0;
+    }
+
+    .index {
+      color: var(--faint);
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 11px;
+    }
+
+    .catalog-row dt {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .catalog-row dd {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .catalog-footer {
+      display: flex;
+      justify-content: space-between;
+      margin: 0;
+      padding-top: 16px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .bridge {
+      position: relative;
+      z-index: 3;
+      display: grid;
+      place-items: center;
+      align-self: stretch;
+    }
+
+    .bridge::before {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      width: 100%;
+      height: 1px;
+      content: "";
+      background: var(--accent);
+    }
+
+    .bridge::after {
+      position: absolute;
+      top: calc(50% - 4px);
+      right: 0;
+      width: 7px;
+      height: 7px;
+      content: "";
+      border-top: 1px solid var(--accent);
+      border-right: 1px solid var(--accent);
+      transform: rotate(45deg);
+    }
+
+    .control {
+      position: relative;
+      display: grid;
+      place-content: center;
+      width: 116px;
+      height: 116px;
+      color: #fffaf4;
+      text-align: center;
+      background: var(--accent);
+      border-radius: 28px;
+      box-shadow: 0 0 0 10px var(--paper);
+    }
+
+    .control strong {
+      font-size: 21px;
+      line-height: 1;
+    }
+
+    .control span {
+      margin-top: 10px;
+      color: #ffe9e0;
+      font-size: 9px;
+      font-weight: 650;
+      letter-spacing: .04em;
+      white-space: nowrap;
+    }
+
+    .target-stack {
+      position: relative;
+      z-index: 1;
+      padding: 0 14px 14px 0;
+    }
+
+    .target-stack::before,
+    .target-stack::after {
+      position: absolute;
+      content: "";
+      background: transparent;
+      border: 1px solid var(--rule);
+      border-radius: 5px;
+    }
+
+    .target-stack::before {
+      inset: 7px 7px 7px 7px;
+    }
+
+    .target-stack::after {
+      inset: 14px 0 0 14px;
+    }
+
+    .target {
+      min-height: 274px;
+      padding: 24px 28px 22px;
+    }
+
+    .selection {
+      display: flex;
+      gap: 8px;
+      padding: 20px 0;
+      border-bottom: 1px solid var(--rule);
+    }
+
+    .skill {
+      padding: 7px 10px;
+      color: var(--ink);
+      background: var(--accent-soft);
+      border-radius: 3px;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    .destinations {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px 22px;
+      padding-top: 18px;
+    }
+
+    .destination code {
+      display: block;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .destination small {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .destination.custom code,
+    .destination.custom small {
+      color: var(--faint);
+    }
+
+    footer {
+      margin-top: 22px;
+      padding-top: 22px;
+      border-top: 1px solid var(--rule);
+    }
+
+    footer strong {
+      display: block;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 22px;
+      font-weight: 400;
+    }
+
+    footer p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    @media (max-width: 980px) {
+      body { padding: 0; }
+
+      .sheet {
+        min-height: 100vh;
+        padding: 38px 28px;
+        border: 0;
+      }
+
+      .diagram {
+        grid-template-columns: 1fr;
+        gap: 0;
+      }
+
+      .bridge {
+        min-height: 150px;
+      }
+
+      .bridge::before {
+        top: 0;
+        left: 50%;
+        width: 1px;
+        height: 100%;
+      }
+
+      .bridge::after {
+        top: auto;
+        right: calc(50% - 4px);
+        bottom: 1px;
+        transform: rotate(135deg);
+      }
+
+      .target-stack {
+        padding-left: 0;
+      }
+
+    }
+
+    @media (max-width: 520px) {
+      .panel-header { display: block; }
+      .panel-note { margin-top: 7px; }
+      .catalog-row { grid-template-columns: 26px 1fr; }
+      .catalog-row dd { grid-column: 2; padding-bottom: 10px; }
+      .destinations { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="sheet">
+    <header>
+      <p class="eyebrow">A repository-scoped Skill workspace</p>
+      <h1>The right skills for every repo.</h1>
+      <p class="intro">Use Skills as they are, combine them, or build on them when needed.</p>
+    </header>
+
+    <section class="diagram" aria-label="seiton workflow">
+      <article class="panel catalog">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Central workspace</p>
+            <h2>One source of truth</h2>
+          </div>
+          <p class="panel-note">Maintain once</p>
+        </div>
+
+        <dl class="catalog-list">
+          <div class="catalog-row">
+            <span class="index">01</span>
+            <dt>Owned Skills</dt>
+            <dd>Maintain directly</dd>
+          </div>
+          <div class="catalog-row">
+            <span class="index">02</span>
+            <dt>Open-source Skills</dt>
+            <dd>Track source + version</dd>
+          </div>
+          <div class="catalog-row">
+            <span class="index">03</span>
+            <dt>Private Skills</dt>
+            <dd>Keep local</dd>
+          </div>
+        </dl>
+
+        <p class="catalog-footer">
+          <span>Use together</span>
+          <span>Adapt</span>
+          <span>Route</span>
+        </p>
+      </article>
+
+      <div class="bridge" aria-label="seiton selects, links, and verifies Skills">
+        <div class="control">
+          <strong>seiton</strong>
+          <span>select · link · verify</span>
+        </div>
+      </div>
+
+      <div class="target-stack">
+        <article class="panel target">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Repository-specific selection</p>
+              <h2>Only what this repo needs</h2>
+            </div>
+          </div>
+
+          <div class="selection" aria-label="Example selected Skills">
+            <span class="skill">code-review</span>
+            <span class="skill">tdd</span>
+          </div>
+
+          <div class="destinations">
+            <div class="destination">
+              <code>.agents/skills/</code>
+              <small>Codex · compatible agents</small>
+            </div>
+            <div class="destination">
+              <code>.claude/skills/</code>
+              <small>Claude Code</small>
+            </div>
+            <div class="destination custom">
+              <code>…</code>
+              <small>Custom destinations</small>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <footer>
+      <strong>Maintain centrally. Activate precisely.</strong>
+      <p>Restore and update open-source Skills from their source. Load them only where they are needed.</p>
+    </footer>
+  </main>
+</body>
+</html>

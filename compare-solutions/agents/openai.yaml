@@ -1,0 +1,4 @@
+interface:
+  display_name: "Compare Solutions"
+  short_description: "Compare independent approaches before implementation"
+  default_prompt: "Use $compare-solutions to compare independent approaches before implementation."
