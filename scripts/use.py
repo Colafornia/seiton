@@ -11,7 +11,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 EXTERNAL = ROOT / "external"
-BASE_SKILLS = ["seiton"]
 CLIENTS = {"codex": ".agents", "claude": ".claude"}
 
 
@@ -53,7 +52,7 @@ def requested_names(skills=None, profile=None):
         if profile not in available:
             raise ValueError(f"unknown profile: {profile}")
         names = available[profile]["skills"]
-    return list(dict.fromkeys(BASE_SKILLS + names))
+    return list(dict.fromkeys(names))
 
 
 def restore_if_needed(names, locked, quiet=False):
@@ -142,11 +141,9 @@ def skill_metadata(path):
 
 
 def catalog_payload(project, sources, locked, available_profiles):
-    groups = {"owned": [], "open_source": {}, "local": []}
+    groups = {"bundled": [], "owned": [], "open_source": {}, "local": []}
     local_root = (ROOT / "local").resolve()
     for name, path in sorted(sources.items()):
-        if name == "seiton":
-            continue
         installed = (path / "SKILL.md").is_file()
         metadata = (
             skill_metadata(path)
@@ -154,7 +151,9 @@ def catalog_payload(project, sources, locked, available_profiles):
             else {"title": name.replace("-", " ").title(), "description": ""}
         )
         item = {"name": name, **metadata, "installed": installed}
-        if name in locked:
+        if name == "seiton":
+            groups["bundled"].append(item)
+        elif name in locked:
             author = locked[name]["source"].split("/", 1)[0]
             groups["open_source"].setdefault(author, []).append(item)
         elif path.parent == local_root:

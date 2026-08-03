@@ -86,20 +86,71 @@ class UseSkillsTest(unittest.TestCase):
             self.assertFalse((project / ".agents").exists())
             self.assertFalse((project / ".claude").exists())
 
-    def test_minimal_activates_only_baseline_and_is_idempotent(self):
+    def test_list_json_includes_bundled_seiton(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = run_cli(Path(directory), "list", "--json")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(
+                [item["name"] for item in payload["groups"]["bundled"]],
+                ["seiton"],
+            )
+
+    def test_minimal_activates_empty_overlay_and_is_idempotent(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             result = run_cli(project, "minimal")
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("Activated in", result.stdout)
+            self.assertIn("Already active in", result.stdout)
             for client in (".agents", ".claude"):
                 links = project / client / "skills"
-                self.assertEqual({path.name for path in links.iterdir()}, {"seiton"})
+                self.assertEqual(list(links.iterdir()), [])
 
             result = run_cli(project, "minimal")
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("Already active in", result.stdout)
+
+    def test_seiton_can_be_selected_explicitly(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+
+            result = run_cli(project, "use", "seiton")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for client in (".agents", ".claude"):
+                self.assertEqual(
+                    (project / client / "skills/seiton").resolve(),
+                    ROOT / "seiton",
+                )
+
+    def test_minimal_removes_previously_selected_seiton(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            self.assertEqual(run_cli(project, "use", "seiton").returncode, 0)
+
+            result = run_cli(project, "minimal")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("removed=seiton", result.stdout)
+            for client in (".agents", ".claude"):
+                self.assertFalse((project / client / "skills/seiton").exists())
+
+    def test_minimal_preserves_project_skill_directories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            for client in (".agents", ".claude"):
+                skill = project / client / "skills/project-owned"
+                skill.mkdir(parents=True)
+                (skill / "SKILL.md").write_text("project content\n", encoding="utf-8")
+
+            result = run_cli(project, "minimal")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for client in (".agents", ".claude"):
+                skill_file = project / client / "skills/project-owned/SKILL.md"
+                self.assertEqual(skill_file.read_text(encoding="utf-8"), "project content\n")
 
     def test_missing_locked_skill_restores_from_lock(self):
         with (
@@ -148,7 +199,7 @@ class UseSkillsTest(unittest.TestCase):
             for client in (".agents", ".claude"):
                 links = project / client / "skills"
                 self.assertEqual((links / "deliver").resolve(), ROOT / "deliver")
-                self.assertEqual((links / "seiton").resolve(), ROOT / "seiton")
+                self.assertFalse((links / "seiton").exists())
                 self.assertFalse((links / "stale").exists())
                 self.assertEqual((links / "foreign").resolve(), foreign.resolve())
 

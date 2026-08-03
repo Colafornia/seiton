@@ -4,6 +4,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   readlink,
   rm,
   symlink,
@@ -48,7 +49,25 @@ test("init creates a neutral valid workspace", async (context) => {
     encoding: "utf8",
   });
   assert.equal(check.status, 0, check.stderr);
-  assert.match(check.stdout, /owned=1, external=0, local=0/);
+  assert.match(check.stdout, /bundled=1, owned=0, external=0, local=0/);
+
+  const list = spawnSync("python3", ["scripts/use.py", "list", "--json"], {
+    cwd: target,
+    encoding: "utf8",
+  });
+  assert.equal(list.status, 0, list.stderr);
+  assert.deepEqual(
+    JSON.parse(list.stdout).groups.bundled.map(({ name }) => name),
+    ["seiton"],
+  );
+
+  const minimal = spawnSync("python3", ["scripts/use.py", "minimal"], {
+    cwd: target,
+    encoding: "utf8",
+  });
+  assert.equal(minimal.status, 0, minimal.stderr);
+  assert.deepEqual(await readdir(join(target, ".agents/skills")), []);
+  assert.deepEqual(await readdir(join(target, ".claude/skills")), []);
 });
 
 test("linked executable runs the CLI", async (context) => {

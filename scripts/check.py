@@ -27,7 +27,7 @@ def skill_name(path):
 
 
 def source_dirs():
-    owned = [
+    root_skills = [
         path
         for path in ROOT.iterdir()
         if path.is_dir() and not path.name.startswith(".") and (path / "SKILL.md").is_file()
@@ -35,7 +35,8 @@ def source_dirs():
     external = list((ROOT / "external/.agents/skills").glob("*"))
     local = list((ROOT / "local").glob("*")) if (ROOT / "local").exists() else []
     return {
-        "owned": sorted(path for path in owned if (path / "SKILL.md").is_file()),
+        "bundled": sorted(path for path in root_skills if path.name == "seiton"),
+        "owned": sorted(path for path in root_skills if path.name != "seiton"),
         "external": sorted(path for path in external if (path / "SKILL.md").is_file()),
         "local": sorted(path for path in local if (path / "SKILL.md").is_file()),
     }
@@ -70,7 +71,9 @@ def main():
     if external_cache.exists() and locked != installed:
         errors += fail(f"external lock mismatch: locked={sorted(locked)}, installed={sorted(installed)}")
     local_names = {
-        path.name for category in ("owned", "local") for path in sources[category]
+        path.name
+        for category in ("bundled", "owned", "local")
+        for path in sources[category]
     }
     if locked & local_names:
         errors += fail(f"lock names collide with local sources: {sorted(locked & local_names)}")

@@ -14,20 +14,21 @@ across agent-specific directories.
 seiton instead:
 
 - keeps owned, private, and open-source Skills in one source of truth;
-- activates an exact Skill set for each repository;
-- keeps only `seiton` active as the baseline;
+- activates an exact Seiton-managed overlay for each repository;
+- allows an empty overlay with `minimal`;
 - switches Codex and Claude Code together;
 - restores and updates open-source Skills without committing downloaded copies;
 - lets you use Skills unchanged, combine them, or build on them.
 
 `npx skills` handles open-source Skill installation and updates. seiton adds
-the central catalog, repository-specific selection, and minimal baseline.
+the central catalog and repository-specific selection. Its bundled `seiton`
+control Skill is available but never activated implicitly.
 
 ## Workspace structure
 
 ```text
 ~/seiton/
-├── seiton/                     Baseline Skill
+├── seiton/                     Optional bundled control Skill
 ├── <owned-skill>/              Skills you maintain
 ├── external/
 │   └── skills-lock.json        Open-source Skill sources
@@ -55,8 +56,9 @@ npx seiton@latest init
 ```
 
 This creates `~/seiton`, installs the `seiton` command in `~/.local/bin`, and
-starts with no owned Skills, open-source dependencies, or profiles. To use
-another location:
+starts with no owned Skills, open-source dependencies, profiles, or active
+overlay. The bundled control Skill is present but optional. To use another
+location:
 
 ```sh
 npx seiton@latest init ~/Tools/seiton
@@ -72,9 +74,10 @@ Run commands from anywhere inside a Git repository:
 ```sh
 seiton                         # current selection
 seiton list                    # profiles and catalog
-seiton use my-skill tdd        # exact selection
+seiton use my-skill tdd        # exact Seiton-managed overlay
 seiton use --profile my-work   # reusable selection
-seiton minimal                 # keep only seiton
+seiton use seiton              # explicitly enable the control Skill
+seiton minimal                 # empty Seiton-managed overlay
 seiton check                   # validate catalog and links
 ```
 
@@ -140,7 +143,8 @@ profile.
 
 ## Conversational selection
 
-Once `seiton` is active in a repository, invoke `$seiton` without arguments to
+The bundled control Skill is optional. After `seiton use seiton`, invoke
+`$seiton` without arguments to
 choose a profile, custom set, or minimal mode. It:
 
 1. reads the catalog and current selection;
