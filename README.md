@@ -1,7 +1,10 @@
-# seiton
+<h1 align="center">seiton</h1>
 
-seiton is a central Skill workspace for coding agents. Keep owned, private, and
-open-source Skills in one place, then activate only what each repository needs.
+<p align="center">A central Skill workspace for coding agents. Keep owned, private, and open-source Skills in one place, then activate only what each repository needs.</p>
+
+<!-- <p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
+</p> -->
 
 ![seiton keeps Skills in one central workspace and activates a repository-specific selection](docs/seiton-workflow.svg)
 
@@ -69,20 +72,28 @@ Skills are not installed globally.
 
 ## Use
 
-Run commands from anywhere inside a Git repository:
+Project commands can run anywhere inside a Git repository:
 
 ```sh
-seiton                         # current selection
-seiton list                    # profiles and catalog
-seiton use my-skill tdd        # exact Seiton-managed overlay
-seiton use --profile my-work   # reusable selection
-seiton use seiton              # explicitly enable the control Skill
-seiton minimal                 # empty Seiton-managed overlay
-seiton check                   # validate catalog and links
+seiton
+seiton status [--project PATH] [--json]
+seiton list [--project PATH] [--json]
+seiton use SKILL... [--project PATH] [--dry-run] [--json]
+seiton use --profile NAME [--project PATH] [--dry-run] [--json]
+seiton minimal [--project PATH] [--dry-run] [--json]
+seiton check [--project PATH] [--json]
 ```
 
-Use `--project PATH` to target another repository, `--json` for
-machine-readable output, and `--dry-run` to preview `use` or `minimal`.
+`ls` remains an alias for `list`. Skill names and `--profile` are mutually
+exclusive. The catalog commands do not require a Git project:
+
+```sh
+seiton add SOURCE SKILL... [--json]
+seiton add SOURCE --all [--json]
+seiton restore [--json]
+seiton update SKILL... [--json]
+seiton update --all [--json]
+```
 
 seiton links the selected Skills into:
 
@@ -112,16 +123,27 @@ Keep a private or unverified Skill under the ignored `local/` directory:
 ~/seiton/local/my-private-skill/SKILL.md
 ```
 
-Add an open-source Skill from `external/`:
+Add an open-source Skill to the catalog:
 
 ```sh
-cd ~/seiton/external
-npx skills add owner/repository \
-  --skill skill-name \
-  --agent codex \
-  --agent claude-code \
-  --yes
+seiton add owner/repository skill-name
+seiton add owner/repository one two --json
 ```
+
+Register every Skill only when the entire source has been reviewed:
+
+```sh
+seiton add owner/repository --all --json
+```
+
+An empty `add` is rejected. Seiton never exposes upstream global installation:
+it always supplies explicit Skill names, the two supported clients, and
+`--yes`. Registering every Skill is not a recommendation to activate
+everything. `add` never changes project links or profiles; run `seiton use
+skill-name` separately when needed.
+
+Seiton delegates these operations to the fixed compatible version
+`skills@1.5.21` for Codex and Claude Code only.
 
 Commit `external/skills-lock.json`, not the downloaded source. Restore the
 catalog on another machine with:
@@ -177,12 +199,14 @@ remaining-context measurements.
 Update locked open-source Skills explicitly:
 
 ```sh
-seiton update
 seiton update tdd codebase-design
+seiton update --all
 ```
 
-Commit the changed `external/skills-lock.json`. The lock records sources, Skill
-paths, and hashes; current entries do not pin upstream commits.
+An empty `seiton update` is rejected. Central updates are immediately visible
+to every project linked to the changed Skills. Commit the changed
+`external/skills-lock.json`. The lock records sources, Skill paths, and hashes;
+current entries do not pin upstream commits.
 
 Update an npm-installed seiton core without touching user content:
 

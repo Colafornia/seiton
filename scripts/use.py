@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -11,6 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 EXTERNAL = ROOT / "external"
+SKILLS_PACKAGE = "skills@1.5.21"
 CLIENTS = {"codex": ".agents", "claude": ".claude"}
 
 
@@ -71,7 +73,7 @@ def restore_if_needed(names, locked, quiet=False):
         grouped.setdefault(source, []).append(name)
 
     for source, skill_names in grouped.items():
-        command = ["npx", "skills", "add", source]
+        command = ["npx", SKILLS_PACKAGE, "add", source]
         for name in skill_names:
             command.extend(["--skill", name])
         command.extend(
@@ -91,6 +93,60 @@ def restore_if_needed(names, locked, quiet=False):
     if still_missing:
         raise ValueError(f"failed to restore: {', '.join(still_missing)}")
     return missing
+
+
+def add_to_catalog(source, names, all_skills=False, quiet=False):
+    if bool(names) == bool(all_skills):
+        raise ValueError("add requires Skill names or --all")
+    before = locked_skills()
+    command = ["npx", SKILLS_PACKAGE, "add", source]
+    if all_skills:
+        command.extend(["--skill", "*"])
+    elif names:
+        command.extend(["--skill", *names])
+    command.extend(["--agent", "codex", "--agent", "claude-code", "--yes"])
+    result = subprocess.run(
+        command,
+        cwd=EXTERNAL,
+        check=True,
+        **({"capture_output": True, "text": True} if quiet else {}),
+    )
+
+    after = locked_skills()
+    added = sorted(set(after) - set(before))
+    changed = sorted(
+        name for name in set(after) & set(before) if after[name] != before[name]
+    )
+    verified = added + changed if all_skills else names
+    missing_lock = [name for name in verified if name not in after]
+    missing_files = [
+        name
+        for name in verified
+        if not (EXTERNAL / ".agents/skills" / name / "SKILL.md").is_file()
+    ]
+    errors = []
+    if missing_lock:
+        errors.append(f"missing from lock: {', '.join(missing_lock)}")
+    if missing_files:
+        errors.append(f"missing SKILL.md: {', '.join(missing_files)}")
+    if errors:
+        raise ValueError(f"catalog verification failed; {'; '.join(errors)}")
+    return {"added": added, "changed": changed, "upstream": result}
+
+
+def update_catalog(names, quiet=False):
+    before = locked_skills()
+    result = subprocess.run(
+        ["npx", SKILLS_PACKAGE, "update", *names, "--project", "--yes"],
+        cwd=EXTERNAL,
+        check=True,
+        **({"capture_output": True, "text": True} if quiet else {}),
+    )
+    after = locked_skills()
+    changed = sorted(
+        name for name in set(before) | set(after) if before.get(name) != after.get(name)
+    )
+    return {"changed": changed, "upstream": result}
 
 
 def catalog(locked):
@@ -324,37 +380,93 @@ def activate(project, names, sources, managed, dry_run=False):
     return changed, plan
 
 
+def truncate(value, width):
+    if len(value) <= width:
+        return value
+    return value[: max(0, width - 1)] + "…"
+
+
+def print_table(headers, rows):
+    rows = [[str(value) for value in row] for row in rows]
+    widths = [
+        max(len(header), *(len(row[index]) for row in rows))
+        for index, header in enumerate(headers)
+    ]
+    available = shutil.get_terminal_size(fallback=(100, 24)).columns
+    overflow = sum(widths) + 2 * (len(widths) - 1) - available
+    for index in reversed(range(len(widths))):
+        minimum = len(headers[index])
+        reduction = min(overflow, widths[index] - minimum)
+        widths[index] -= reduction
+        overflow -= reduction
+        if not overflow:
+            break
+
+    for row in [list(headers), *rows]:
+        print("  ".join(
+            truncate(value, widths[index]).ljust(widths[index])
+            if index < len(widths) - 1
+            else truncate(value, widths[index])
+            for index, value in enumerate(row)
+        ).rstrip())
+
+
 def print_status(payload):
-    print(f"Project: {payload['project']}")
-    for client, names in payload["active"].items():
-        print(f"{client.capitalize()}: {', '.join(names) or 'none'}")
-    print(f"Synced: {'yes' if payload['synced'] else 'no'}")
-    print(f"Managed: {', '.join(payload['managed']) or 'none'}")
-    print(f"Foreign: {', '.join(payload['foreign']) or 'none'}")
-    print(f"Broken: {', '.join(payload['broken']) or 'none'}")
+    print(f"PROJECT  {payload['project']}")
+    print()
+    status = "synced" if payload["synced"] else "different"
+    print_table(
+        ("CLIENT", "STATUS", "SKILLS"),
+        [
+            (client, status, len(names))
+            for client, names in payload["active"].items()
+        ],
+    )
+    print()
+    active = sorted({name for names in payload["active"].values() for name in names})
+    width = shutil.get_terminal_size(fallback=(100, 24)).columns - 9
+    print(f"ACTIVE   {truncate(', '.join(active) or 'none', width)}")
     context = payload["context"]
     print(
-        "Context: "
-        f"~{context['discovery_tokens']} discovery tokens; "
-        f"~{context['body_tokens_if_invoked']} body tokens if all invoked"
+        "CONTEXT  "
+        f"~{context['discovery_tokens']:,} discovery · "
+        f"~{context['body_tokens_if_invoked']:,} if invoked"
     )
+    issues = []
+    if payload["foreign"]:
+        issues.append(f"foreign: {', '.join(payload['foreign'])}")
+    if payload["broken"]:
+        issues.append(f"broken: {', '.join(payload['broken'])}")
+    print(f"ISSUES   {truncate('; '.join(issues) or 'none', width)}")
 
 
 def print_catalog(payload):
-    print("Profiles")
-    for name, config in payload["profiles"].items():
-        print(f"  {name}: {', '.join(config['skills']) or 'minimal'}")
-    labels = {"owned": "Owned", "local": "Local"}
-    for group in ("owned", "local"):
-        print(labels[group])
-        for item in payload["groups"][group]:
-            print(f"  {item['title']} ({item['name']}): {item['description']}")
-    print("Open source")
+    print("PROFILES")
+    print()
+    print_table(
+        ("NAME", "SKILLS", "SELECTION"),
+        [
+            (name, len(config["skills"]), ", ".join(config["skills"]) or "minimal")
+            for name, config in payload["profiles"].items()
+        ],
+    )
+    print()
+    print("SKILLS")
+    print()
+    rows = []
+    for source in ("bundled", "owned", "local"):
+        for item in payload["groups"].get(source, []):
+            rows.append((
+                item["name"], source, "ready" if item["installed"] else "missing",
+                item["description"] or "-",
+            ))
     for author, items in payload["groups"]["open_source"].items():
-        print(f"  {author}")
         for item in items:
-            suffix = "" if item["installed"] else " [not restored]"
-            print(f"    {item['title']} ({item['name']}){suffix}: {item['description']}")
+            rows.append((
+                item["name"], author, "ready" if item["installed"] else "missing",
+                item["description"] or "-",
+            ))
+    print_table(("NAME", "SOURCE", "STATE", "DESCRIPTION"), rows)
 
 
 def print_activation(payload):
@@ -404,20 +516,13 @@ def build_parser():
     parser = argparse.ArgumentParser(
         description="Manage a minimal project-specific Skill set"
     )
-    add_common_options(parser)
-    parser.add_argument("--dry-run", action="store_true")
-
-    legacy = parser.add_mutually_exclusive_group()
-    legacy.add_argument("--profile", help=argparse.SUPPRESS)
-    legacy.add_argument("--skill", nargs="+", help=argparse.SUPPRESS)
-    legacy.add_argument("--catalog", action="store_true", help=argparse.SUPPRESS)
+    parser.set_defaults(project=None, json=False, dry_run=False)
 
     subcommands = parser.add_subparsers(dest="command")
     for name, aliases in (
         ("status", []),
         ("list", ["ls"]),
         ("minimal", []),
-        ("restore", []),
         ("check", []),
     ):
         child = subcommands.add_parser(name, aliases=aliases)
@@ -431,9 +536,19 @@ def build_parser():
     use.add_argument("--profile")
     use.add_argument("--dry-run", action="store_true", default=argparse.SUPPRESS)
 
+    add = subcommands.add_parser("add")
+    add.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    add.add_argument("source")
+    add.add_argument("skills", nargs="*")
+    add.add_argument("--all", dest="all_skills", action="store_true")
+
+    restore = subcommands.add_parser("restore")
+    restore.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+
     update = subcommands.add_parser("update")
-    add_common_options(update, suppressed=True)
+    update.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     update.add_argument("skills", nargs="*")
+    update.add_argument("--all", dest="all_skills", action="store_true")
     return parser
 
 
@@ -441,18 +556,78 @@ def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.catalog:
-        args.command = "list"
-        args.json = True
-    elif args.profile or args.skill:
-        args.command = "use"
-        args.skills = args.skill or []
-    elif not args.command:
+    if not args.command:
         args.command = "status"
 
     try:
         if args.dry_run and args.command not in {"use", "minimal"}:
             raise ValueError("--dry-run is supported only by use and minimal")
+        if args.command == "use" and args.profile and args.skills:
+            raise ValueError("use Skill names and --profile are mutually exclusive")
+        if args.command == "add":
+            names = args.skills or []
+            if bool(names) == bool(args.all_skills):
+                raise ValueError("add requires Skill names or --all")
+            changes = add_to_catalog(
+                args.source,
+                names,
+                all_skills=bool(args.all_skills),
+                quiet=bool(args.json),
+            )
+            activation = f"seiton use {' '.join(names)}" if names else None
+            payload = {
+                "source": args.source,
+                "added": changes["added"],
+                "changed": changes["changed"],
+                "activation": activation,
+            }
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+            else:
+                print(f"Added to catalog: {', '.join(changes['added']) or 'none'}")
+                print(f"Changed in catalog: {', '.join(changes['changed']) or 'none'}")
+                if activation:
+                    print(f"Activate with: {activation}")
+            return 0
+
+        if args.command == "restore":
+            locked = locked_skills()
+            missing = restore_if_needed(locked, locked, quiet=bool(args.json))
+            payload = {"restored": missing}
+            if args.json:
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+            else:
+                print(
+                    f"Restored: {', '.join(missing)}"
+                    if missing
+                    else "External Skills are already restored"
+                )
+            return 0
+
+        if args.command == "update":
+            if bool(args.skills) == bool(args.all_skills):
+                raise ValueError("update requires Skill names or --all")
+            names = [] if args.all_skills else args.skills
+            changes = update_catalog(names, quiet=bool(args.json))
+            impact = "Central changes affect every project linked to these Skills."
+            payload = {
+                "updated": names or "all",
+                "changed": changes["changed"],
+                "impact": impact,
+            }
+            if args.json:
+                payload["upstream"] = changes["upstream"].stdout.strip()
+                print(json.dumps(payload, ensure_ascii=False, indent=2))
+            else:
+                print(
+                    f"Updated: {', '.join(names)}"
+                    if names
+                    else "Updated all external Skills"
+                )
+                print(f"Changed in catalog: {', '.join(changes['changed']) or 'none'}")
+                print(f"WARNING: {impact}")
+            return 0
+
         project = resolve_project(args.project or Path.cwd())
         locked = locked_skills()
         sources, managed = catalog(locked)
@@ -499,49 +674,6 @@ def main(argv=None):
                 print(json.dumps(payload, ensure_ascii=False, indent=2))
             else:
                 print_activation(payload)
-            return 0
-
-        if args.command == "restore":
-            missing = restore_if_needed(locked, locked, quiet=args.json)
-            payload = {"project": str(project), "restored": missing}
-            if args.json:
-                print(json.dumps(payload, ensure_ascii=False, indent=2))
-            else:
-                print(
-                    f"Restored: {', '.join(missing)}"
-                    if missing
-                    else "External Skills are already restored"
-                )
-            return 0
-
-        if args.command == "update":
-            command = [
-                "npx",
-                "skills",
-                "update",
-                *args.skills,
-                "--project",
-                "--yes",
-            ]
-            result = subprocess.run(
-                command,
-                cwd=EXTERNAL,
-                check=True,
-                **({"capture_output": True, "text": True} if args.json else {}),
-            )
-            payload = {
-                "project": str(project),
-                "updated": args.skills or "all",
-                **({"upstream": result.stdout.strip()} if args.json else {}),
-            }
-            if args.json:
-                print(json.dumps(payload, ensure_ascii=False, indent=2))
-            else:
-                print(
-                    f"Updated: {', '.join(args.skills)}"
-                    if args.skills
-                    else "Updated all external Skills"
-                )
             return 0
 
         if args.command == "check":
