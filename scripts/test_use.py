@@ -10,6 +10,7 @@ from os import terminal_size
 from pathlib import Path
 from unittest.mock import patch
 
+from scripts import catalog as catalog_module
 from scripts import use
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -305,7 +306,7 @@ class UseSkillsTest(unittest.TestCase):
 
     def test_missing_locked_skill_restores_from_lock(self):
         with (
-            patch("scripts.use.subprocess.run") as run,
+            patch("scripts.catalog.subprocess.run") as run,
             patch("pathlib.Path.is_file", side_effect=[False, True]),
         ):
             use.restore_if_needed(
@@ -338,13 +339,13 @@ class UseSkillsTest(unittest.TestCase):
             stderr="repository not found\n",
         )
         with (
-            patch("scripts.use.subprocess.run", side_effect=failure),
+            patch("scripts.catalog.subprocess.run", side_effect=failure),
             self.assertRaisesRegex(
                 ValueError,
                 r"npx skills@1\.5\.21 failed with exit code 1: repository not found",
             ),
         ):
-            use.run_skills(["add", "owner/repo"], quiet=True)
+            catalog_module.run_skills(["add", "owner/repo"], quiet=True)
 
     def test_restore_does_not_require_a_git_project(self):
         output = io.StringIO()
@@ -363,9 +364,9 @@ class UseSkillsTest(unittest.TestCase):
 
     def test_add_registers_and_verifies_an_open_source_skill(self):
         with (
-            patch("scripts.use.subprocess.run") as run,
+            patch("scripts.catalog.subprocess.run") as run,
             patch(
-                "scripts.use.locked_skills",
+                "scripts.catalog.locked_skills",
                 return_value={"tdd": {}, "debug": {}},
             ),
             patch("pathlib.Path.is_file", return_value=True),
@@ -395,9 +396,9 @@ class UseSkillsTest(unittest.TestCase):
 
     def test_add_all_expands_to_wildcard_and_reports_lock_changes(self):
         with (
-            patch("scripts.use.subprocess.run") as run,
+            patch("scripts.catalog.subprocess.run") as run,
             patch(
-                "scripts.use.locked_skills",
+                "scripts.catalog.locked_skills",
                 side_effect=[
                     {"existing": {"installPath": "old"}},
                     {
@@ -436,8 +437,8 @@ class UseSkillsTest(unittest.TestCase):
 
     def test_add_fails_when_upstream_does_not_update_the_catalog(self):
         with (
-            patch("scripts.use.subprocess.run"),
-            patch("scripts.use.locked_skills", return_value={}),
+            patch("scripts.catalog.subprocess.run"),
+            patch("scripts.catalog.locked_skills", return_value={}),
             patch("pathlib.Path.is_file", return_value=False),
             self.assertRaisesRegex(ValueError, "missing from lock: tdd"),
         ):
@@ -513,9 +514,9 @@ class UseSkillsTest(unittest.TestCase):
 
     def test_update_uses_pinned_upstream_package(self):
         with (
-            patch("scripts.use.subprocess.run") as run,
+            patch("scripts.catalog.subprocess.run") as run,
             patch(
-                "scripts.use.locked_skills",
+                "scripts.catalog.locked_skills",
                 side_effect=[{"tdd": {}}, {"tdd": {"updated": True}}],
             ),
         ):
@@ -539,8 +540,8 @@ class UseSkillsTest(unittest.TestCase):
 
     def test_update_all_uses_upstream_default_all_behavior(self):
         with (
-            patch("scripts.use.subprocess.run") as run,
-            patch("scripts.use.locked_skills", side_effect=[{}, {}]),
+            patch("scripts.catalog.subprocess.run") as run,
+            patch("scripts.catalog.locked_skills", side_effect=[{}, {}]),
         ):
             use.update_catalog([], quiet=True)
 
@@ -566,7 +567,6 @@ class UseSkillsTest(unittest.TestCase):
                 return_value={"changed": ["tdd"], "upstream": None},
             ) as update,
             patch("scripts.use.resolve_project") as resolve_project,
-            patch("scripts.use.subprocess.run"),
             redirect_stdout(output),
         ):
             result = use.main(["update", "tdd"])
@@ -679,7 +679,7 @@ class UseSkillsTest(unittest.TestCase):
 
             with (
                 patch.dict(
-                    "scripts.use.os.environ",
+                    "scripts.project.os.environ",
                     isolated_env(root),
                 ),
                 patch("scripts.use.restore_if_needed") as restore,
@@ -718,7 +718,7 @@ class UseSkillsTest(unittest.TestCase):
                 return original(link, target, **kwargs)
 
             with (
-                patch.dict("scripts.use.os.environ", isolated_env(root)),
+                patch.dict("scripts.project.os.environ", isolated_env(root)),
                 patch.object(Path, "symlink_to", fail_first),
             ):
                 with self.assertRaisesRegex(
@@ -737,7 +737,7 @@ class UseSkillsTest(unittest.TestCase):
             self.assertFalse((project / ".agents/skills/skill").exists())
             self.assertEqual((project / ".claude/skills/skill").resolve(), old.resolve())
 
-            with patch.dict("scripts.use.os.environ", isolated_env(root)):
+            with patch.dict("scripts.project.os.environ", isolated_env(root)):
                 changed, _ = use.activate(
                     project,
                     ["skill"],
@@ -762,8 +762,8 @@ class UseSkillsTest(unittest.TestCase):
             }
             error = io.StringIO()
             with (
-                patch.dict("scripts.use.os.environ", isolated_env(project)),
-                patch("scripts.use.status_payload", return_value=invalid_status),
+                patch.dict("scripts.project.os.environ", isolated_env(project)),
+                patch("scripts.project.status_payload", return_value=invalid_status),
                 redirect_stderr(error),
             ):
                 result = use.main(
@@ -856,7 +856,7 @@ class UseSkillsTest(unittest.TestCase):
             (codex_global / "invalid-global").mkdir()
 
             with patch.dict(
-                "scripts.use.os.environ",
+                "scripts.project.os.environ",
                 {"HOME": str(root / "home"), "CODEX_HOME": str(codex_home)},
             ):
                 payload = use.status_payload(
@@ -918,7 +918,7 @@ class UseSkillsTest(unittest.TestCase):
                 (skills / "managed").symlink_to(target, target_is_directory=True)
 
             with patch.dict(
-                "scripts.use.os.environ",
+                "scripts.project.os.environ",
                 {"HOME": str(root / "home"), "CODEX_HOME": str(root / "codex")},
             ):
                 payload = use.status_payload(
@@ -947,7 +947,7 @@ class UseSkillsTest(unittest.TestCase):
                 )
 
             with patch.dict(
-                "scripts.use.os.environ",
+                "scripts.project.os.environ",
                 {
                     "HOME": str(home),
                     "CODEX_HOME": str(codex_home),

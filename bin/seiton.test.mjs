@@ -148,7 +148,9 @@ test("upgrade replaces only product core", async (context) => {
   await writeFile(join(target, "external/skills-lock.json"), lock);
   await writeFile(join(target, "skillsets.toml"), profiles);
   await writeFile(join(target, "README.md"), "My workspace\n");
-  await writeFile(join(target, "scripts/use.py"), "stale\n");
+  for (const file of ["use.py", "catalog.py", "project.py"]) {
+    await writeFile(join(target, `scripts/${file}`), "stale\n");
+  }
   await writeFile(join(target, "seiton/SKILL.md"), "stale\n");
 
   await upgradeWorkspace(target);
@@ -157,10 +159,12 @@ test("upgrade replaces only product core", async (context) => {
   assert.equal(await readFile(join(target, "skillsets.toml"), "utf8"), profiles);
   assert.equal(await readFile(join(target, "README.md"), "utf8"), "My workspace\n");
   assert.match(await readFile(join(target, "my-skill/SKILL.md"), "utf8"), /name: my-skill/);
-  assert.equal(
-    await readFile(join(target, "scripts/use.py"), "utf8"),
-    await readFile(join(ROOT, "scripts/use.py"), "utf8"),
-  );
+  for (const file of ["use.py", "catalog.py", "project.py"]) {
+    assert.equal(
+      await readFile(join(target, `scripts/${file}`), "utf8"),
+      await readFile(join(ROOT, `scripts/${file}`), "utf8"),
+    );
+  }
   assert.equal(
     await readFile(join(target, "seiton/SKILL.md"), "utf8"),
     await readFile(join(ROOT, "seiton/SKILL.md"), "utf8"),
@@ -181,6 +185,8 @@ test("npm package excludes the maintainer catalog", () => {
     "package.json",
     "bin/seiton.mjs",
     "scripts/use.py",
+    "scripts/catalog.py",
+    "scripts/project.py",
     "scripts/check.py",
     "seiton/SKILL.md",
   ]) {

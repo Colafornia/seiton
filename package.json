@@ -10,6 +10,8 @@
   "files": [
     "bin/seiton.mjs",
     "scripts/use.py",
+    "scripts/catalog.py",
+    "scripts/project.py",
     "scripts/check.py",
     "seiton",
     "README.md",

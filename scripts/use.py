@@ -2,47 +2,49 @@
 
 import argparse
 import json
-import os
-import re
 import shutil
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-EXTERNAL = ROOT / "external"
-SKILLS_PACKAGE = "skills@1.5.21"
-CLIENTS = {"codex": ".agents", "claude": ".claude"}
-
-
-def run_skills(arguments, quiet=False):
-    try:
-        return subprocess.run(
-            ["npx", SKILLS_PACKAGE, *arguments],
-            cwd=EXTERNAL,
-            check=True,
-            **({"capture_output": True, "text": True} if quiet else {}),
-        )
-    except subprocess.CalledProcessError as exc:
-        detail = (exc.stderr or exc.stdout or "").strip()
-        message = f"npx {SKILLS_PACKAGE} failed with exit code {exc.returncode}"
-        raise ValueError(f"{message}: {detail}" if detail else message) from exc
-
-
-def locked_skills():
-    lock = json.loads((EXTERNAL / "skills-lock.json").read_text(encoding="utf-8"))
-    return lock["skills"]
-
-
-def profiles(root=ROOT):
-    shared = tomllib.loads(
-        (root / "skillsets.toml").read_text(encoding="utf-8")
-    )["profiles"]
-    local = root / ".agent/skillsets.toml"
-    if local.is_file():
-        shared.update(tomllib.loads(local.read_text(encoding="utf-8"))["profiles"])
-    return shared
+if __package__:
+    from .catalog import (
+        ROOT,
+        add_to_catalog,
+        catalog,
+        estimate_sources,
+        locked_skills,
+        profiles,
+        restore_if_needed,
+        skill_metadata,
+        update_catalog,
+    )
+    from .project import (
+        CLIENTS,
+        activate,
+        activation_plan,
+        global_skills_paths,
+        status_payload,
+    )
+else:
+    from catalog import (
+        ROOT,
+        add_to_catalog,
+        catalog,
+        estimate_sources,
+        locked_skills,
+        profiles,
+        restore_if_needed,
+        skill_metadata,
+        update_catalog,
+    )
+    from project import (
+        CLIENTS,
+        activate,
+        activation_plan,
+        global_skills_paths,
+        status_payload,
+    )
 
 
 def resolve_project(path):
@@ -69,132 +71,6 @@ def requested_names(skills=None, profile=None):
             raise ValueError(f"unknown profile: {profile}")
         names = available[profile]["skills"]
     return list(dict.fromkeys(names))
-
-
-def restore_if_needed(names, locked, quiet=False):
-    missing = [
-        name
-        for name in names
-        if name in locked
-        and not (EXTERNAL / ".agents/skills" / name / "SKILL.md").is_file()
-    ]
-    grouped = {}
-    for name in missing:
-        entry = locked[name]
-        source = entry.get("sourceUrl") or entry["source"]
-        if entry.get("ref"):
-            source = f"{source}@{entry['ref']}"
-        grouped.setdefault(source, []).append(name)
-
-    for source, skill_names in grouped.items():
-        command = ["add", source]
-        for name in skill_names:
-            command.extend(["--skill", name])
-        command.extend(
-            ["--agent", "codex", "--agent", "claude-code", "--yes"]
-        )
-        run_skills(command, quiet=quiet)
-    still_missing = [
-        name
-        for name in missing
-        if not (EXTERNAL / ".agents/skills" / name / "SKILL.md").is_file()
-    ]
-    if still_missing:
-        raise ValueError(f"failed to restore: {', '.join(still_missing)}")
-    return missing
-
-
-def add_to_catalog(source, names, all_skills=False, quiet=False):
-    if bool(names) == bool(all_skills):
-        raise ValueError("add requires Skill names or --all")
-    before = locked_skills()
-    command = ["add", source]
-    if all_skills:
-        command.extend(["--skill", "*"])
-    elif names:
-        command.extend(["--skill", *names])
-    command.extend(["--agent", "codex", "--agent", "claude-code", "--yes"])
-    result = run_skills(command, quiet=quiet)
-
-    after = locked_skills()
-    added = sorted(set(after) - set(before))
-    changed = sorted(
-        name for name in set(after) & set(before) if after[name] != before[name]
-    )
-    verified = added + changed if all_skills else names
-    missing_lock = [name for name in verified if name not in after]
-    missing_files = [
-        name
-        for name in verified
-        if not (EXTERNAL / ".agents/skills" / name / "SKILL.md").is_file()
-    ]
-    errors = []
-    if missing_lock:
-        errors.append(f"missing from lock: {', '.join(missing_lock)}")
-    if missing_files:
-        errors.append(f"missing SKILL.md: {', '.join(missing_files)}")
-    if errors:
-        raise ValueError(f"catalog verification failed; {'; '.join(errors)}")
-    return {"added": added, "changed": changed, "upstream": result}
-
-
-def update_catalog(names, quiet=False):
-    before = locked_skills()
-    result = run_skills(
-        ["update", *names, "--project", "--yes"], quiet=quiet
-    )
-    after = locked_skills()
-    changed = sorted(
-        name for name in set(before) | set(after) if before.get(name) != after.get(name)
-    )
-    return {"changed": changed, "upstream": result}
-
-
-def catalog(locked):
-    groups = [
-        [path for path in ROOT.iterdir() if (path / "SKILL.md").is_file()],
-        list((EXTERNAL / ".agents/skills").glob("*")),
-        list((ROOT / "local").glob("*")) if (ROOT / "local").exists() else [],
-    ]
-    sources = {}
-    for paths in groups:
-        for path in paths:
-            if not (path / "SKILL.md").is_file():
-                continue
-            if path.name in sources and sources[path.name] != path.resolve():
-                raise ValueError(f"duplicate skill: {path.name}")
-            sources[path.name] = path.resolve()
-    for name in locked:
-        sources.setdefault(name, (EXTERNAL / ".agents/skills" / name).resolve())
-
-    return sources, set(sources.values())
-
-
-def skill_metadata(path):
-    text = (path / "SKILL.md").read_text(encoding="utf-8")
-    _, frontmatter, body = text.split("---", 2)
-    lines = frontmatter.splitlines()
-    description = ""
-    for index, line in enumerate(lines):
-        if not line.startswith("description:"):
-            continue
-        value = line.partition(":")[2].strip()
-        if value in {">", ">-", "|", "|-"}:
-            parts = []
-            for continuation in lines[index + 1 :]:
-                if continuation and not continuation[0].isspace():
-                    break
-                if continuation.strip():
-                    parts.append(continuation.strip())
-            description = " ".join(parts)
-        else:
-            description = value.strip("\"'")
-        break
-    heading = re.search(r"^#\s+(.+?)\s*$", body, re.MULTILINE)
-    return {
-        "title": heading.group(1) if heading else path.name,
-        "description": description,
-    }
 
 
 def catalog_payload(project, sources, locked, available_profiles):
@@ -226,292 +102,6 @@ def catalog_payload(project, sources, locked, available_profiles):
         links = project / directory / "skills"
         active[client] = sorted(path.name for path in links.iterdir()) if links.is_dir() else []
     return {"project": str(project), "active": active, "profiles": available_profiles, "groups": groups}
-
-
-def link_target(link):
-    return (link.parent / os.readlink(link)).resolve()
-
-
-def estimate_sources(names, sources):
-    metadata_chars = 0
-    body_chars = 0
-    measured = []
-    for name in dict.fromkeys(names):
-        path = sources.get(name)
-        if not path:
-            continue
-        try:
-            if not (path / "SKILL.md").is_file():
-                continue
-            metadata = skill_metadata(path)
-            body = (path / "SKILL.md").read_text(encoding="utf-8")
-        except (OSError, ValueError):
-            continue
-        metadata_chars += len(name) + len(metadata["description"])
-        body_chars += len(body)
-        measured.append(name)
-    return {
-        "discovery_tokens": (metadata_chars + 3) // 4,
-        "body_tokens_if_invoked": (body_chars + 3) // 4,
-        "measured": measured,
-        "approximate": True,
-    }
-
-
-def skill_entry(path):
-    target = link_target(path) if path.is_symlink() else path.resolve()
-    if path.is_symlink() and not target.exists():
-        health = "broken"
-    elif (target / "SKILL.md").is_file():
-        health = "healthy"
-    else:
-        health = "invalid"
-    return {
-        "name": path.name,
-        "path": str(path),
-        "target": str(target),
-        "health": health,
-    }
-
-
-def scan_skills(directory, skip_hidden=False):
-    if not directory.is_dir():
-        return []
-    return [
-        skill_entry(path)
-        for path in sorted(directory.iterdir(), key=lambda item: item.name)
-        if not skip_hidden or not path.name.startswith(".")
-    ]
-
-
-def global_skills_paths(client):
-    if client == "codex":
-        homes = [
-            Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex"),
-            Path.home() / ".agents",
-        ]
-    else:
-        homes = [
-            Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
-        ]
-    return list(dict.fromkeys((home.expanduser() / "skills").resolve() for home in homes))
-
-
-def read_skill_lock(path):
-    try:
-        skills = json.loads(path.read_text(encoding="utf-8"))["skills"]
-    except (KeyError, OSError, TypeError, ValueError):
-        return {}
-    return skills if isinstance(skills, dict) else {}
-
-
-def status_payload(project, sources, managed, locked=None):
-    clients = {}
-    seiton_signatures = {}
-    readable_seiton = set()
-    conflicts = []
-    project_lock = read_skill_lock(project / ".agents/.skill-lock.json")
-    global_lock = read_skill_lock(Path.home() / ".agents/.skill-lock.json")
-    source_indexes = {
-        "seiton": {
-            sources[name].resolve(): entry["source"]
-            for name, entry in (locked or {}).items()
-            if name in sources and entry.get("source")
-        },
-        "project": {
-            (project / ".agents/skills" / name).resolve(): entry["source"]
-            for name, entry in project_lock.items()
-            if entry.get("source")
-        },
-        "global": {
-            (Path.home() / ".agents/skills" / name).resolve(): entry["source"]
-            for name, entry in global_lock.items()
-            if entry.get("source")
-        },
-    }
-    for client, directory in CLIENTS.items():
-        project_path = project / directory / "skills"
-        project_entries = scan_skills(project_path)
-        seiton = [
-            entry for entry in project_entries if Path(entry["target"]) in managed
-        ]
-        project_layer = [entry for entry in project_entries if entry not in seiton]
-        global_layer = sorted(
-            (
-                entry
-                for path in global_skills_paths(client)
-                for entry in scan_skills(path, skip_hidden=True)
-            ),
-            key=lambda entry: (entry["name"], entry["path"]),
-        )
-        clients[client] = {
-            "seiton": seiton,
-            "project": project_layer,
-            "global": global_layer,
-        }
-        for layer, entries in clients[client].items():
-            for entry in entries:
-                source = source_indexes[layer].get(Path(entry["target"]))
-                if source:
-                    entry["source"] = source
-        seiton_signatures[client] = tuple(
-            (entry["name"], entry["target"], entry["health"])
-            for entry in seiton
-        )
-        readable_seiton.update(
-            entry["name"] for entry in seiton if entry["health"] == "healthy"
-        )
-        layers_by_name = {}
-        for layer, entries in clients[client].items():
-            for entry in entries:
-                layers_by_name.setdefault(entry["name"], set()).add(layer)
-        conflicts.extend(
-            {
-                "client": client,
-                "name": name,
-                "layers": [layer for layer in clients[client] if layer in layers],
-            }
-            for name, layers in sorted(layers_by_name.items())
-            if len(layers) > 1
-        )
-
-    return {
-        "project": str(project),
-        "clients": clients,
-        "conflicts": conflicts,
-        "synced": len(set(seiton_signatures.values())) <= 1,
-        "context": estimate_sources(sorted(readable_seiton), sources),
-    }
-
-
-def activation_plan(project, names, sources, managed):
-    selected = set(names)
-    missing = sorted(selected - set(sources))
-    if missing:
-        raise ValueError(f"missing skills: {', '.join(missing)}")
-
-    plan = {}
-    conflicts = []
-    for client, directory in CLIENTS.items():
-        links = project / directory / "skills"
-        existing = list(links.iterdir()) if links.is_dir() else []
-        changes = {
-            "added": [],
-            "removed": [],
-            "replaced": [],
-            "preserved": [],
-            "foreign": [],
-        }
-
-        for name in names:
-            link = links / name
-            if link.is_symlink():
-                target = link_target(link)
-                if target == sources[name]:
-                    changes["preserved"].append(name)
-                elif target in managed:
-                    changes["replaced"].append(name)
-                else:
-                    conflicts.append(f"conflicting link: {link}")
-            elif link.exists():
-                conflicts.append(f"conflicting path: {link}")
-            else:
-                changes["added"].append(name)
-
-        for link in existing:
-            if link.name in selected:
-                continue
-            if link.is_symlink() and link_target(link) in managed:
-                changes["removed"].append(link.name)
-            else:
-                changes["foreign"].append(link.name)
-        for global_path in global_skills_paths(client):
-            for name in names:
-                conflict = global_path / name
-                if conflict.exists() or conflict.is_symlink():
-                    conflicts.append(f"conflicting global path: {conflict}")
-        for values in changes.values():
-            values.sort()
-        plan[client] = changes
-
-    if conflicts:
-        raise ValueError("; ".join(conflicts))
-    return plan
-
-
-def activation_operations(plan):
-    operations = []
-    for client, changes in plan.items():
-        operations.extend(
-            (client, "unlink", name) for name in changes["removed"]
-        )
-        for name in changes["replaced"]:
-            operations.extend(
-                ((client, "unlink", name), (client, "symlink", name))
-            )
-        operations.extend(
-            (client, "symlink", name) for name in changes["added"]
-        )
-    return operations
-
-
-def format_operations(operations):
-    return ", ".join(
-        f"{client}:{action}:{name}" for client, action, name in operations
-    ) or "none"
-
-
-def apply_activation(project, sources, operations):
-    completed = []
-    try:
-        for directory in CLIENTS.values():
-            (project / directory / "skills").mkdir(parents=True, exist_ok=True)
-        for client, action, name in operations:
-            link = project / CLIENTS[client] / "skills" / name
-            if action == "unlink":
-                link.unlink()
-            else:
-                link.symlink_to(sources[name], target_is_directory=True)
-            completed.append((client, action, name))
-    except OSError as exc:
-        incomplete = operations[len(completed):]
-        raise ValueError(
-            f"reconcile failed: {exc}; "
-            f"completed: {format_operations(completed)}; "
-            f"incomplete: {format_operations(incomplete)}"
-        ) from exc
-
-
-def verify_activation(project, names, sources, managed, operations):
-    status = status_payload(project, sources, managed)
-    expected = {
-        (name, str(sources[name].resolve()), "healthy") for name in names
-    }
-    invalid = [
-        client
-        for client, layers in status["clients"].items()
-        if {
-            (entry["name"], entry["target"], entry["health"])
-            for entry in layers["seiton"]
-        }
-        != expected
-    ]
-    if invalid:
-        raise ValueError(
-            f"reconcile verification failed for: {', '.join(invalid)}; "
-            f"completed: {format_operations(operations)}; incomplete: none"
-        )
-
-
-def activate(project, names, sources, managed, dry_run=False):
-    plan = activation_plan(project, names, sources, managed)
-    operations = activation_operations(plan)
-    if dry_run:
-        return bool(operations), plan
-
-    apply_activation(project, sources, operations)
-    verify_activation(project, names, sources, managed, operations)
-    return bool(operations), plan
 
 
 def truncate(value, width):

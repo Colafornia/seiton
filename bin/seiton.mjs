@@ -18,7 +18,13 @@ import { dirname, join, parse, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const CORE_ENTRIES = ["scripts/use.py", "scripts/check.py", "seiton"];
+const CORE_ENTRIES = [
+  "scripts/use.py",
+  "scripts/catalog.py",
+  "scripts/project.py",
+  "scripts/check.py",
+  "seiton",
+];
 const INITIAL_ENTRIES = ["README.md", "LICENSE"];
 const EMPTY_LOCK = `${JSON.stringify({ version: 1, skills: {} }, null, 2)}\n`;
 const EMPTY_PROFILES = "[profiles]\n";
