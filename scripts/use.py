@@ -237,11 +237,17 @@ def estimate_sources(names, sources):
     measured = []
     for name in dict.fromkeys(names):
         path = sources.get(name)
-        if not path or not (path / "SKILL.md").is_file():
+        if not path:
             continue
-        metadata = skill_metadata(path)
+        try:
+            if not (path / "SKILL.md").is_file():
+                continue
+            metadata = skill_metadata(path)
+            body = (path / "SKILL.md").read_text(encoding="utf-8")
+        except (OSError, ValueError):
+            continue
         metadata_chars += len(name) + len(metadata["description"])
-        body_chars += len((path / "SKILL.md").read_text(encoding="utf-8"))
+        body_chars += len(body)
         measured.append(name)
     return {
         "discovery_tokens": (metadata_chars + 3) // 4,
@@ -251,61 +257,129 @@ def estimate_sources(names, sources):
     }
 
 
-def status_payload(project, sources, managed):
+def skill_entry(path):
+    target = link_target(path) if path.is_symlink() else path.resolve()
+    if path.is_symlink() and not target.exists():
+        health = "broken"
+    elif (target / "SKILL.md").is_file():
+        health = "healthy"
+    else:
+        health = "invalid"
+    return {
+        "name": path.name,
+        "path": str(path),
+        "target": str(target),
+        "health": health,
+    }
+
+
+def scan_skills(directory, skip_hidden=False):
+    if not directory.is_dir():
+        return []
+    return [
+        skill_entry(path)
+        for path in sorted(directory.iterdir(), key=lambda item: item.name)
+        if not skip_hidden or not path.name.startswith(".")
+    ]
+
+
+def global_skills_paths(client):
+    if client == "codex":
+        homes = [
+            Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex"),
+            Path.home() / ".agents",
+        ]
+    else:
+        homes = [
+            Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
+        ]
+    return list(dict.fromkeys((home.expanduser() / "skills").resolve() for home in homes))
+
+
+def read_skill_lock(path):
+    try:
+        skills = json.loads(path.read_text(encoding="utf-8"))["skills"]
+    except (KeyError, OSError, TypeError, ValueError):
+        return {}
+    return skills if isinstance(skills, dict) else {}
+
+
+def status_payload(project, sources, managed, locked=None):
     clients = {}
-    all_names = set()
-    managed_names = set()
-    foreign_names = set()
-    broken = []
-
+    seiton_signatures = {}
+    readable_seiton = set()
+    conflicts = []
+    project_lock = read_skill_lock(project / ".agents/.skill-lock.json")
+    global_lock = read_skill_lock(Path.home() / ".agents/.skill-lock.json")
+    source_indexes = {
+        "seiton": {
+            sources[name].resolve(): entry["source"]
+            for name, entry in (locked or {}).items()
+            if name in sources and entry.get("source")
+        },
+        "project": {
+            (project / ".agents/skills" / name).resolve(): entry["source"]
+            for name, entry in project_lock.items()
+            if entry.get("source")
+        },
+        "global": {
+            (Path.home() / ".agents/skills" / name).resolve(): entry["source"]
+            for name, entry in global_lock.items()
+            if entry.get("source")
+        },
+    }
     for client, directory in CLIENTS.items():
-        links = project / directory / "skills"
-        entries = []
-        if links.is_dir():
-            for link in sorted(links.iterdir(), key=lambda path: path.name):
-                item = {"name": link.name, "kind": "foreign", "broken": False}
-                if link.is_symlink():
-                    target = link_target(link)
-                    item["target"] = str(target)
-                    item["broken"] = not (target / "SKILL.md").is_file()
-                    if target in managed:
-                        item["kind"] = "managed"
-                elif (link / "SKILL.md").is_file():
-                    item["target"] = str(link.resolve())
-                else:
-                    item["broken"] = True
-                entries.append(item)
-                all_names.add(link.name)
-                (managed_names if item["kind"] == "managed" else foreign_names).add(link.name)
-                if item["broken"]:
-                    broken.append(str(link))
-        clients[client] = entries
-
-    active = {
-        client: [entry["name"] for entry in entries]
-        for client, entries in clients.items()
-    }
-    signatures = {
-        client: tuple(
+        project_path = project / directory / "skills"
+        project_entries = scan_skills(project_path)
+        seiton = [
+            entry for entry in project_entries if Path(entry["target"]) in managed
+        ]
+        project_layer = [entry for entry in project_entries if entry not in seiton]
+        global_layer = sorted(
             (
-                entry["name"],
-                entry.get("target"),
-                entry["kind"],
-                entry["broken"],
-            )
-            for entry in entries
+                entry
+                for path in global_skills_paths(client)
+                for entry in scan_skills(path, skip_hidden=True)
+            ),
+            key=lambda entry: (entry["name"], entry["path"]),
         )
-        for client, entries in clients.items()
-    }
+        clients[client] = {
+            "seiton": seiton,
+            "project": project_layer,
+            "global": global_layer,
+        }
+        for layer, entries in clients[client].items():
+            for entry in entries:
+                source = source_indexes[layer].get(Path(entry["target"]))
+                if source:
+                    entry["source"] = source
+        seiton_signatures[client] = tuple(
+            (entry["name"], entry["target"], entry["health"])
+            for entry in seiton
+        )
+        readable_seiton.update(
+            entry["name"] for entry in seiton if entry["health"] == "healthy"
+        )
+        layers_by_name = {}
+        for layer, entries in clients[client].items():
+            for entry in entries:
+                layers_by_name.setdefault(entry["name"], set()).add(layer)
+        conflicts.extend(
+            {
+                "client": client,
+                "name": name,
+                "layers": [layer for layer in clients[client] if layer in layers],
+            }
+            for name, layers in sorted(layers_by_name.items())
+            if len(layers) > 1
+        )
+
     return {
         "project": str(project),
-        "active": active,
-        "synced": len(set(signatures.values())) <= 1,
-        "managed": sorted(managed_names),
-        "foreign": sorted(foreign_names),
-        "broken": sorted(broken),
-        "context": estimate_sources(sorted(all_names), sources),
         "clients": clients,
+        "conflicts": conflicts,
+        "synced": len(set(seiton_signatures.values())) <= 1,
+        "context": estimate_sources(sorted(readable_seiton), sources),
     }
 
 
@@ -411,33 +485,105 @@ def print_table(headers, rows):
         ).rstrip())
 
 
+def display_path(value, project):
+    path = Path(value)
+    for base, label in ((project, "."), (ROOT, "$SEITON"), (Path.home(), "~")):
+        try:
+            relative = path.relative_to(base)
+        except ValueError:
+            continue
+        if relative == Path("."):
+            return label
+        return str(relative) if label == "." else f"{label}/{relative}"
+    return str(path)
+
+
+def status_entry_label(entry, project):
+    if entry["health"] == "healthy":
+        return entry["name"]
+    return (
+        f"{entry['name']} [{entry['health']}] -> "
+        f"{display_path(entry['target'], project)}"
+    )
+
+
+def print_status_entries(entries, project, prefix):
+    direct = [entry for entry in entries if "source" not in entry]
+    repositories = {}
+    for entry in entries:
+        if "source" in entry:
+            repositories.setdefault(entry["source"], []).append(entry)
+
+    nodes = [(None, [entry]) for entry in direct] + sorted(repositories.items())
+    for index, (source, group) in enumerate(nodes):
+        last = index == len(nodes) - 1
+        branch = "└── " if last else "├── "
+        if source is None:
+            print(f"{prefix}{branch}{status_entry_label(group[0], project)}")
+            continue
+        print(f"{prefix}{branch}{source}")
+        child_prefix = prefix + ("    " if last else "│   ")
+        for child_index, entry in enumerate(group):
+            child_branch = "└── " if child_index == len(group) - 1 else "├── "
+            print(
+                f"{child_prefix}{child_branch}"
+                f"{status_entry_label(entry, project)}"
+            )
+
+
 def print_status(payload):
-    print(f"PROJECT  {payload['project']}")
-    print()
-    status = "synced" if payload["synced"] else "different"
-    print_table(
-        ("CLIENT", "STATUS", "SKILLS"),
-        [
-            (client, status, len(names))
-            for client, names in payload["active"].items()
-        ],
+    project = Path(payload["project"])
+    state = "✓ synced" if payload["synced"] else "✗ different"
+    counts = "  ".join(
+        f"{client}:{len(layers['seiton'])}"
+        for client, layers in payload["clients"].items()
     )
-    print()
-    active = sorted({name for names in payload["active"].values() for name in names})
-    width = shutil.get_terminal_size(fallback=(100, 24)).columns - 9
-    print(f"ACTIVE   {truncate(', '.join(active) or 'none', width)}")
+    conflicts = (
+        f"  ⚠ conflicts:{len(payload['conflicts'])}"
+        if payload["conflicts"]
+        else ""
+    )
+    print(f"seiton status  {project}")
+    print(f"{state}  {counts}{conflicts}")
+    for client, layers in payload["clients"].items():
+        print()
+        print(client)
+        layer_items = list(layers.items())
+        for index, (layer, entries) in enumerate(layer_items):
+            last = index == len(layer_items) - 1
+            branch = "└── " if last else "├── "
+            child_prefix = "    " if last else "│   "
+            directory = (
+                project / CLIENTS[client] / "skills"
+                if layer != "global"
+                else None
+            )
+            paths = (
+                display_path(directory, project)
+                if directory
+                else " · ".join(
+                    display_path(path, project)
+                    for path in global_skills_paths(client)
+                )
+            )
+            empty = "  ∅" if not entries else ""
+            print(f"{branch}{layer:<7} {paths}{empty}")
+            print_status_entries(entries, project, child_prefix)
+    if payload["conflicts"]:
+        print()
+        print("CONFLICTS")
+        for item in payload["conflicts"]:
+            print(
+                f"└── {item['client']}:{item['name']}  "
+                f"{' ↔ '.join(item['layers'])}"
+            )
     context = payload["context"]
+    print()
     print(
-        "CONTEXT  "
-        f"~{context['discovery_tokens']:,} discovery · "
-        f"~{context['body_tokens_if_invoked']:,} if invoked"
+        f"context ~{context['discovery_tokens']:,} discovery / "
+        f"~{context['body_tokens_if_invoked']:,} invoked"
     )
-    issues = []
-    if payload["foreign"]:
-        issues.append(f"foreign: {', '.join(payload['foreign'])}")
-    if payload["broken"]:
-        issues.append(f"broken: {', '.join(payload['broken'])}")
-    print(f"ISSUES   {truncate('; '.join(issues) or 'none', width)}")
+    print("directory view only, not full runtime · system/plugin/unknown omitted")
 
 
 def print_catalog(payload):
@@ -488,14 +634,26 @@ def print_activation(payload):
     )
 
 
-def run_check(project, sources, managed):
+def status_is_healthy(status):
+    return (
+        status["synced"]
+        and not status["conflicts"]
+        and all(
+            entry["health"] == "healthy"
+            for layers in status["clients"].values()
+            for entry in layers["seiton"]
+        )
+    )
+
+
+def run_check(project, sources, managed, locked=None):
     repository = subprocess.run(
         [sys.executable, str(ROOT / "scripts/check.py")],
         capture_output=True,
         text=True,
     )
-    status = status_payload(project, sources, managed)
-    project_ok = status["synced"] and not status["broken"]
+    status = status_payload(project, sources, managed, locked)
+    project_ok = status_is_healthy(status)
     return {
         "ok": repository.returncode == 0 and project_ok,
         "repository": {
@@ -633,7 +791,7 @@ def main(argv=None):
         sources, managed = catalog(locked)
 
         if args.command == "status":
-            payload = status_payload(project, sources, managed)
+            payload = status_payload(project, sources, managed, locked)
             if args.json:
                 print(json.dumps(payload, ensure_ascii=False, indent=2))
             else:
@@ -677,14 +835,14 @@ def main(argv=None):
             return 0
 
         if args.command == "check":
-            payload = run_check(project, sources, managed)
+            payload = run_check(project, sources, managed, locked)
             if args.json:
                 print(json.dumps(payload, ensure_ascii=False, indent=2))
             else:
                 print(payload["repository"]["output"])
                 print(
                     "Project links: OK"
-                    if payload["project"]["synced"] and not payload["project"]["broken"]
+                    if status_is_healthy(payload["project"])
                     else "Project links: ERROR"
                 )
             return 0 if payload["ok"] else 1

@@ -129,12 +129,62 @@ class UseSkillsTest(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn(f"PROJECT  {project.resolve()}", result.stdout)
-            self.assertIn("CLIENT  STATUS  SKILLS", result.stdout)
-            self.assertIn("ACTIVE   none", result.stdout)
-            self.assertIn("ISSUES   none", result.stdout)
+            self.assertIn(f"seiton status  {project.resolve()}", result.stdout)
+            self.assertIn("✓ synced  codex:0  claude:0", result.stdout)
+            self.assertIn("codex\n├── seiton", result.stdout)
+            self.assertIn("claude\n├── seiton", result.stdout)
+            self.assertIn("directory view only, not full runtime", result.stdout)
             self.assertFalse((project / ".agents").exists())
             self.assertFalse((project / ".claude").exists())
+
+    def test_status_text_only_explains_unhealthy_entries(self):
+        project = Path("/project")
+        payload = {
+            "project": str(project),
+            "clients": {
+                "codex": {
+                    "seiton": [
+                        {
+                            "name": "ready",
+                            "path": "/project/.agents/skills/ready",
+                            "target": "/catalog/ready",
+                            "health": "healthy",
+                            "source": "owner/repo",
+                        },
+                        {
+                            "name": "missing",
+                            "path": "/project/.agents/skills/missing",
+                            "target": "/catalog/missing",
+                            "health": "broken",
+                            "source": "owner/repo",
+                        },
+                    ],
+                    "project": [],
+                    "global": [],
+                },
+                "claude": {"seiton": [], "project": [], "global": []},
+            },
+            "conflicts": [],
+            "synced": False,
+            "context": {
+                "discovery_tokens": 0,
+                "body_tokens_if_invoked": 0,
+                "measured": [],
+                "approximate": True,
+            },
+        }
+        output = io.StringIO()
+        with (
+            patch("scripts.use.global_skills_paths", return_value=[Path("/global")]),
+            redirect_stdout(output),
+        ):
+            use.print_status(payload)
+
+        text = output.getvalue()
+        self.assertIn("│   └── owner/repo\n│       ├── ready", text)
+        self.assertNotIn("healthy", text)
+        self.assertNotIn("/catalog/ready", text)
+        self.assertIn("missing [broken] -> /catalog/missing", text)
 
     def test_catalog_is_a_compact_table_that_fits_the_terminal(self):
         payload = {
@@ -591,7 +641,7 @@ class UseSkillsTest(unittest.TestCase):
             self.assertFalse((project / ".agents/skills/deliver").exists())
             self.assertTrue(conflict.is_dir())
 
-    def test_status_detects_same_name_with_different_targets(self):
+    def test_project_differences_do_not_affect_status_sync(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             targets = []
@@ -609,7 +659,180 @@ class UseSkillsTest(unittest.TestCase):
 
             payload = use.status_payload(project, {}, set())
 
+            self.assertTrue(payload["synced"])
+            self.assertTrue(use.status_is_healthy(payload))
+            self.assertEqual(
+                [entry["name"] for entry in payload["clients"]["codex"]["project"]],
+                ["foreign"],
+            )
+
+    def test_status_reports_layers_health_conflicts_and_readable_context(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "project"
+            project.mkdir()
+            catalog = root / "catalog"
+            managed = catalog / "managed"
+            managed.mkdir(parents=True)
+            (managed / "SKILL.md").write_text(
+                "---\nname: managed\ndescription: Managed.\n---\nbody\n",
+                encoding="utf-8",
+            )
+            invalid_managed = catalog / "invalid-managed"
+            invalid_managed.mkdir()
+            missing_managed = catalog / "missing-managed"
+            sources = {
+                "managed": managed,
+                "invalid-managed": invalid_managed,
+                "missing-managed": missing_managed,
+            }
+            managed_paths = {path.resolve() for path in sources.values()}
+
+            for client in (".agents", ".claude"):
+                skills = project / client / "skills"
+                skills.mkdir(parents=True)
+                (skills / "managed").symlink_to(managed, target_is_directory=True)
+                (skills / "invalid-managed").symlink_to(
+                    invalid_managed, target_is_directory=True
+                )
+                (skills / "missing-managed").symlink_to(
+                    missing_managed, target_is_directory=True
+                )
+
+            codex_project = project / ".agents/skills"
+            project_owned = codex_project / "project-owned"
+            project_owned.mkdir()
+            (project_owned / "SKILL.md").write_text(
+                "---\nname: project-owned\n---\n", encoding="utf-8"
+            )
+            (codex_project / "broken-project").symlink_to(
+                root / "missing-project", target_is_directory=True
+            )
+            (codex_project / "invalid-project").mkdir()
+
+            codex_home = root / "codex-home"
+            codex_global = codex_home / "skills"
+            for name in ("managed", "project-owned"):
+                skill = codex_global / name
+                skill.mkdir(parents=True)
+                (skill / "SKILL.md").write_text(
+                    f"---\nname: {name}\n---\n", encoding="utf-8"
+                )
+            (codex_global / "broken-global").symlink_to(
+                root / "missing-global", target_is_directory=True
+            )
+            (codex_global / "invalid-global").mkdir()
+
+            with patch.dict(
+                "scripts.use.os.environ",
+                {"HOME": str(root / "home"), "CODEX_HOME": str(codex_home)},
+            ):
+                payload = use.status_payload(
+                    project,
+                    sources,
+                    managed_paths,
+                    {name: {"source": "owner/catalog"} for name in sources},
+                )
+
+            codex = payload["clients"]["codex"]
+            health = {
+                layer: {entry["name"]: entry["health"] for entry in entries}
+                for layer, entries in codex.items()
+            }
+            self.assertEqual(
+                health["seiton"],
+                {
+                    "invalid-managed": "invalid",
+                    "managed": "healthy",
+                    "missing-managed": "broken",
+                },
+            )
+            self.assertEqual(health["project"]["project-owned"], "healthy")
+            self.assertEqual(health["project"]["broken-project"], "broken")
+            self.assertEqual(health["project"]["invalid-project"], "invalid")
+            self.assertEqual(health["global"]["broken-global"], "broken")
+            self.assertEqual(health["global"]["invalid-global"], "invalid")
+            self.assertEqual(payload["clients"]["claude"]["global"], [])
+            self.assertTrue(payload["synced"])
+            self.assertEqual(payload["context"]["measured"], ["managed"])
+            self.assertEqual(
+                payload["conflicts"],
+                [
+                    {"client": "codex", "name": "managed", "layers": ["seiton", "global"]},
+                    {"client": "codex", "name": "project-owned", "layers": ["project", "global"]},
+                ],
+            )
+            self.assertEqual(
+                set(codex["seiton"][0]),
+                {"name", "path", "target", "health", "source"},
+            )
+
+    def test_seiton_differences_make_status_unsynced(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "project"
+            project.mkdir()
+            targets = []
+            for name in ("one", "two"):
+                target = root / name
+                target.mkdir()
+                (target / "SKILL.md").write_text(
+                    f"---\nname: {name}\n---\n", encoding="utf-8"
+                )
+                targets.append(target.resolve())
+            for client, target in zip((".agents", ".claude"), targets):
+                skills = project / client / "skills"
+                skills.mkdir(parents=True)
+                (skills / "managed").symlink_to(target, target_is_directory=True)
+
+            with patch.dict(
+                "scripts.use.os.environ",
+                {"HOME": str(root / "home"), "CODEX_HOME": str(root / "codex")},
+            ):
+                payload = use.status_payload(
+                    project, {"managed": targets[0]}, set(targets)
+                )
+
             self.assertFalse(payload["synced"])
+
+    def test_status_observes_supported_client_global_roots(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "project"
+            project.mkdir()
+            home = root / "home"
+            codex_home = root / "codex"
+            claude_home = root / "claude"
+            for base, name in (
+                (home / ".agents/skills", "universal"),
+                (codex_home / "skills", "codex-only"),
+                (claude_home / "skills", "claude-only"),
+            ):
+                skill = base / name
+                skill.mkdir(parents=True)
+                (skill / "SKILL.md").write_text(
+                    f"---\nname: {name}\n---\n", encoding="utf-8"
+                )
+
+            with patch.dict(
+                "scripts.use.os.environ",
+                {
+                    "HOME": str(home),
+                    "CODEX_HOME": str(codex_home),
+                    "CLAUDE_CONFIG_DIR": str(claude_home),
+                },
+            ):
+                payload = use.status_payload(project, {}, set())
+
+            self.assertEqual(
+                [entry["name"] for entry in payload["clients"]["codex"]["global"]],
+                ["codex-only", "universal"],
+            )
+            self.assertEqual(
+                [entry["name"] for entry in payload["clients"]["claude"]["global"]],
+                ["claude-only"],
+            )
+            self.assertEqual(payload["conflicts"], [])
 
     def test_project_resolution_uses_git_root(self):
         with tempfile.TemporaryDirectory() as directory:
