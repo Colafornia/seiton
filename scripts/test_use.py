@@ -1,5 +1,6 @@
 import json
 import io
+import os
 import subprocess
 import sys
 import tempfile
@@ -14,6 +15,14 @@ from scripts import use
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def isolated_env(root):
+    return {
+        "HOME": str(root / "home"),
+        "CODEX_HOME": str(root / "codex"),
+        "CLAUDE_CONFIG_DIR": str(root / "claude"),
+    }
+
+
 def run_cli(project, *args):
     return subprocess.run(
         [
@@ -25,6 +34,7 @@ def run_cli(project, *args):
         ],
         text=True,
         capture_output=True,
+        env={**os.environ, **isolated_env(project)},
     )
 
 
@@ -321,6 +331,21 @@ class UseSkillsTest(unittest.TestCase):
             check=True,
         )
 
+    def test_captured_upstream_failure_includes_stderr(self):
+        failure = subprocess.CalledProcessError(
+            1,
+            ["npx", "skills@1.5.21"],
+            stderr="repository not found\n",
+        )
+        with (
+            patch("scripts.use.subprocess.run", side_effect=failure),
+            self.assertRaisesRegex(
+                ValueError,
+                r"npx skills@1\.5\.21 failed with exit code 1: repository not found",
+            ),
+        ):
+            use.run_skills(["add", "owner/repo"], quiet=True)
+
     def test_restore_does_not_require_a_git_project(self):
         output = io.StringIO()
         with (
@@ -593,9 +618,11 @@ class UseSkillsTest(unittest.TestCase):
         update.assert_called_once_with([], quiet=False)
         resolve_project.assert_not_called()
 
-    def test_selection_replaces_catalog_links_and_preserves_foreign_links(self):
+    def test_selection_isolated_from_global_and_preserves_foreign_links(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
+            parent = project / "parent"
+            (parent / "codex/skills/deliver").mkdir(parents=True)
             foreign = project / "foreign"
             foreign.mkdir()
             (foreign / "SKILL.md").write_text("---\nname: foreign\n---\n", encoding="utf-8")
@@ -606,7 +633,8 @@ class UseSkillsTest(unittest.TestCase):
                 (links / "stale").symlink_to(ROOT / "compare-solutions")
                 (links / "foreign").symlink_to(foreign)
 
-            result = run_cli(project, "use", "deliver")
+            with patch.dict(os.environ, isolated_env(parent)):
+                result = run_cli(project, "use", "deliver")
 
             self.assertEqual(result.returncode, 0, result.stderr)
             for client in (".agents", ".claude"):
@@ -640,6 +668,110 @@ class UseSkillsTest(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertFalse((project / ".agents/skills/deliver").exists())
             self.assertTrue(conflict.is_dir())
+
+    def test_global_conflict_prevents_restore_and_project_writes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "project"
+            project.mkdir()
+            global_skill = root / "codex/skills/deliver"
+            global_skill.mkdir(parents=True)
+
+            with (
+                patch.dict(
+                    "scripts.use.os.environ",
+                    isolated_env(root),
+                ),
+                patch("scripts.use.restore_if_needed") as restore,
+                redirect_stderr(io.StringIO()),
+            ):
+                result = use.main(
+                    ["use", "deliver", "--project", str(project)]
+                )
+
+            self.assertEqual(result, 1)
+            restore.assert_not_called()
+            self.assertFalse((project / ".agents").exists())
+            self.assertFalse((project / ".claude").exists())
+
+    def test_partial_replacement_is_reported_and_rerun_repairs_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "project"
+            old = root / "old"
+            new = root / "new"
+            for source in (old, new):
+                source.mkdir()
+                (source / "SKILL.md").write_text("---\nname: skill\n---\n")
+            for client in (".agents", ".claude"):
+                link = project / client / "skills/skill"
+                link.parent.mkdir(parents=True)
+                link.symlink_to(old, target_is_directory=True)
+            original = Path.symlink_to
+            calls = 0
+
+            def fail_first(link, target, **kwargs):
+                nonlocal calls
+                calls += 1
+                if calls == 1:
+                    raise OSError("simulated failure")
+                return original(link, target, **kwargs)
+
+            with (
+                patch.dict("scripts.use.os.environ", isolated_env(root)),
+                patch.object(Path, "symlink_to", fail_first),
+            ):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    r"completed: codex:unlink:skill; incomplete: "
+                    r"codex:symlink:skill, claude:unlink:skill, "
+                    r"claude:symlink:skill",
+                ):
+                    use.activate(
+                        project,
+                        ["skill"],
+                        {"skill": new.resolve()},
+                        {old.resolve(), new.resolve()},
+                    )
+
+            self.assertFalse((project / ".agents/skills/skill").exists())
+            self.assertEqual((project / ".claude/skills/skill").resolve(), old.resolve())
+
+            with patch.dict("scripts.use.os.environ", isolated_env(root)):
+                changed, _ = use.activate(
+                    project,
+                    ["skill"],
+                    {"skill": new.resolve()},
+                    {old.resolve(), new.resolve()},
+                )
+
+            self.assertTrue(changed)
+            for client in (".agents", ".claude"):
+                self.assertEqual(
+                    (project / client / "skills/skill").resolve(), new.resolve()
+                )
+
+    def test_post_write_verification_failure_returns_nonzero(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            invalid_status = {
+                "clients": {
+                    client: {"seiton": [], "project": [], "global": []}
+                    for client in use.CLIENTS
+                }
+            }
+            error = io.StringIO()
+            with (
+                patch.dict("scripts.use.os.environ", isolated_env(project)),
+                patch("scripts.use.status_payload", return_value=invalid_status),
+                redirect_stderr(error),
+            ):
+                result = use.main(
+                    ["use", "deliver", "--project", str(project)]
+                )
+
+            self.assertEqual(result, 1)
+            self.assertIn("reconcile verification failed", error.getvalue())
 
     def test_project_differences_do_not_affect_status_sync(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -16,6 +16,20 @@ SKILLS_PACKAGE = "skills@1.5.21"
 CLIENTS = {"codex": ".agents", "claude": ".claude"}
 
 
+def run_skills(arguments, quiet=False):
+    try:
+        return subprocess.run(
+            ["npx", SKILLS_PACKAGE, *arguments],
+            cwd=EXTERNAL,
+            check=True,
+            **({"capture_output": True, "text": True} if quiet else {}),
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "").strip()
+        message = f"npx {SKILLS_PACKAGE} failed with exit code {exc.returncode}"
+        raise ValueError(f"{message}: {detail}" if detail else message) from exc
+
+
 def locked_skills():
     lock = json.loads((EXTERNAL / "skills-lock.json").read_text(encoding="utf-8"))
     return lock["skills"]
@@ -73,18 +87,13 @@ def restore_if_needed(names, locked, quiet=False):
         grouped.setdefault(source, []).append(name)
 
     for source, skill_names in grouped.items():
-        command = ["npx", SKILLS_PACKAGE, "add", source]
+        command = ["add", source]
         for name in skill_names:
             command.extend(["--skill", name])
         command.extend(
             ["--agent", "codex", "--agent", "claude-code", "--yes"]
         )
-        subprocess.run(
-            command,
-            cwd=EXTERNAL,
-            check=True,
-            **({"capture_output": True, "text": True} if quiet else {}),
-        )
+        run_skills(command, quiet=quiet)
     still_missing = [
         name
         for name in missing
@@ -99,18 +108,13 @@ def add_to_catalog(source, names, all_skills=False, quiet=False):
     if bool(names) == bool(all_skills):
         raise ValueError("add requires Skill names or --all")
     before = locked_skills()
-    command = ["npx", SKILLS_PACKAGE, "add", source]
+    command = ["add", source]
     if all_skills:
         command.extend(["--skill", "*"])
     elif names:
         command.extend(["--skill", *names])
     command.extend(["--agent", "codex", "--agent", "claude-code", "--yes"])
-    result = subprocess.run(
-        command,
-        cwd=EXTERNAL,
-        check=True,
-        **({"capture_output": True, "text": True} if quiet else {}),
-    )
+    result = run_skills(command, quiet=quiet)
 
     after = locked_skills()
     added = sorted(set(after) - set(before))
@@ -136,11 +140,8 @@ def add_to_catalog(source, names, all_skills=False, quiet=False):
 
 def update_catalog(names, quiet=False):
     before = locked_skills()
-    result = subprocess.run(
-        ["npx", SKILLS_PACKAGE, "update", *names, "--project", "--yes"],
-        cwd=EXTERNAL,
-        check=True,
-        **({"capture_output": True, "text": True} if quiet else {}),
+    result = run_skills(
+        ["update", *names, "--project", "--yes"], quiet=quiet
     )
     after = locked_skills()
     changed = sorted(
@@ -424,6 +425,11 @@ def activation_plan(project, names, sources, managed):
                 changes["removed"].append(link.name)
             else:
                 changes["foreign"].append(link.name)
+        for global_path in global_skills_paths(client):
+            for name in names:
+                conflict = global_path / name
+                if conflict.exists() or conflict.is_symlink():
+                    conflicts.append(f"conflicting global path: {conflict}")
         for values in changes.values():
             values.sort()
         plan[client] = changes
@@ -433,25 +439,79 @@ def activation_plan(project, names, sources, managed):
     return plan
 
 
+def activation_operations(plan):
+    operations = []
+    for client, changes in plan.items():
+        operations.extend(
+            (client, "unlink", name) for name in changes["removed"]
+        )
+        for name in changes["replaced"]:
+            operations.extend(
+                ((client, "unlink", name), (client, "symlink", name))
+            )
+        operations.extend(
+            (client, "symlink", name) for name in changes["added"]
+        )
+    return operations
+
+
+def format_operations(operations):
+    return ", ".join(
+        f"{client}:{action}:{name}" for client, action, name in operations
+    ) or "none"
+
+
+def apply_activation(project, sources, operations):
+    completed = []
+    try:
+        for directory in CLIENTS.values():
+            (project / directory / "skills").mkdir(parents=True, exist_ok=True)
+        for client, action, name in operations:
+            link = project / CLIENTS[client] / "skills" / name
+            if action == "unlink":
+                link.unlink()
+            else:
+                link.symlink_to(sources[name], target_is_directory=True)
+            completed.append((client, action, name))
+    except OSError as exc:
+        incomplete = operations[len(completed):]
+        raise ValueError(
+            f"reconcile failed: {exc}; "
+            f"completed: {format_operations(completed)}; "
+            f"incomplete: {format_operations(incomplete)}"
+        ) from exc
+
+
+def verify_activation(project, names, sources, managed, operations):
+    status = status_payload(project, sources, managed)
+    expected = {
+        (name, str(sources[name].resolve()), "healthy") for name in names
+    }
+    invalid = [
+        client
+        for client, layers in status["clients"].items()
+        if {
+            (entry["name"], entry["target"], entry["health"])
+            for entry in layers["seiton"]
+        }
+        != expected
+    ]
+    if invalid:
+        raise ValueError(
+            f"reconcile verification failed for: {', '.join(invalid)}; "
+            f"completed: {format_operations(operations)}; incomplete: none"
+        )
+
+
 def activate(project, names, sources, managed, dry_run=False):
     plan = activation_plan(project, names, sources, managed)
-    changed = any(
-        changes[key]
-        for changes in plan.values()
-        for key in ("added", "removed", "replaced")
-    )
+    operations = activation_operations(plan)
     if dry_run:
-        return changed, plan
+        return bool(operations), plan
 
-    for client, directory in CLIENTS.items():
-        links = project / directory / "skills"
-        links.mkdir(parents=True, exist_ok=True)
-        changes = plan[client]
-        for name in changes["removed"] + changes["replaced"]:
-            (links / name).unlink()
-        for name in changes["added"] + changes["replaced"]:
-            (links / name).symlink_to(sources[name], target_is_directory=True)
-    return changed, plan
+    apply_activation(project, sources, operations)
+    verify_activation(project, names, sources, managed, operations)
+    return bool(operations), plan
 
 
 def truncate(value, width):
@@ -710,12 +770,146 @@ def build_parser():
     return parser
 
 
+def command_add(args):
+    names = args.skills or []
+    if bool(names) == bool(args.all_skills):
+        raise ValueError("add requires Skill names or --all")
+    changes = add_to_catalog(
+        args.source,
+        names,
+        all_skills=bool(args.all_skills),
+        quiet=bool(args.json),
+    )
+    activation = f"seiton use {' '.join(names)}" if names else None
+    payload = {
+        "source": args.source,
+        "added": changes["added"],
+        "changed": changes["changed"],
+        "activation": activation,
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(f"Added to catalog: {', '.join(changes['added']) or 'none'}")
+        print(f"Changed in catalog: {', '.join(changes['changed']) or 'none'}")
+        if activation:
+            print(f"Activate with: {activation}")
+    return 0
+
+
+def command_restore(args):
+    locked = locked_skills()
+    missing = restore_if_needed(locked, locked, quiet=bool(args.json))
+    if args.json:
+        print(json.dumps({"restored": missing}, ensure_ascii=False, indent=2))
+    else:
+        print(
+            f"Restored: {', '.join(missing)}"
+            if missing
+            else "External Skills are already restored"
+        )
+    return 0
+
+
+def command_update(args):
+    if bool(args.skills) == bool(args.all_skills):
+        raise ValueError("update requires Skill names or --all")
+    names = [] if args.all_skills else args.skills
+    changes = update_catalog(names, quiet=bool(args.json))
+    impact = "Central changes affect every project linked to these Skills."
+    payload = {
+        "updated": names or "all",
+        "changed": changes["changed"],
+        "impact": impact,
+    }
+    if args.json:
+        payload["upstream"] = changes["upstream"].stdout.strip()
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(
+            f"Updated: {', '.join(names)}"
+            if names
+            else "Updated all external Skills"
+        )
+        print(f"Changed in catalog: {', '.join(changes['changed']) or 'none'}")
+        print(f"WARNING: {impact}")
+    return 0
+
+
+def command_activate(args, project, locked, sources, managed):
+    profile = args.profile if args.command == "use" else None
+    skills = args.skills if args.command == "use" else []
+    if args.command == "use" and not profile and not skills:
+        raise ValueError("use requires Skill names or --profile")
+    names = requested_names(skills, profile)
+    if not args.dry_run:
+        # Conflicts must abort before restore can modify the catalog.
+        activation_plan(project, names, sources, managed)
+        restore_if_needed(names, locked, quiet=args.json)
+        sources, managed = catalog(locked)
+    changed, changes = activate(
+        project, names, sources, managed, dry_run=args.dry_run
+    )
+    payload = {
+        "project": str(project),
+        "selected": names,
+        "profile": profile,
+        "dry_run": args.dry_run,
+        "changed": changed,
+        "clients": changes,
+        "context": estimate_sources(names, sources),
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print_activation(payload)
+    return 0
+
+
+def command_check(args, project, locked, sources, managed):
+    payload = run_check(project, sources, managed, locked)
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        print(payload["repository"]["output"])
+        print(
+            "Project links: OK"
+            if status_is_healthy(payload["project"])
+            else "Project links: ERROR"
+        )
+    return 0 if payload["ok"] else 1
+
+
+def command_project(args):
+    project = resolve_project(args.project or Path.cwd())
+    locked = locked_skills()
+    sources, managed = catalog(locked)
+
+    if args.command == "status":
+        payload = status_payload(project, sources, managed, locked)
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print_status(payload)
+        return 0
+    if args.command in {"list", "ls"}:
+        payload = catalog_payload(project, sources, locked, profiles())
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print_catalog(payload)
+        return 0
+    if args.command in {"use", "minimal"}:
+        return command_activate(args, project, locked, sources, managed)
+    if args.command == "check":
+        return command_check(args, project, locked, sources, managed)
+    raise ValueError(f"unknown command: {args.command}")
+
+
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
-
-    if not args.command:
-        args.command = "status"
+    args.command = args.command or "status"
 
     try:
         if args.dry_run and args.command not in {"use", "minimal"}:
@@ -723,134 +917,15 @@ def main(argv=None):
         if args.command == "use" and args.profile and args.skills:
             raise ValueError("use Skill names and --profile are mutually exclusive")
         if args.command == "add":
-            names = args.skills or []
-            if bool(names) == bool(args.all_skills):
-                raise ValueError("add requires Skill names or --all")
-            changes = add_to_catalog(
-                args.source,
-                names,
-                all_skills=bool(args.all_skills),
-                quiet=bool(args.json),
-            )
-            activation = f"seiton use {' '.join(names)}" if names else None
-            payload = {
-                "source": args.source,
-                "added": changes["added"],
-                "changed": changes["changed"],
-                "activation": activation,
-            }
-            if args.json:
-                print(json.dumps(payload, ensure_ascii=False, indent=2))
-            else:
-                print(f"Added to catalog: {', '.join(changes['added']) or 'none'}")
-                print(f"Changed in catalog: {', '.join(changes['changed']) or 'none'}")
-                if activation:
-                    print(f"Activate with: {activation}")
-            return 0
-
+            return command_add(args)
         if args.command == "restore":
-            locked = locked_skills()
-            missing = restore_if_needed(locked, locked, quiet=bool(args.json))
-            payload = {"restored": missing}
-            if args.json:
-                print(json.dumps(payload, ensure_ascii=False, indent=2))
-            else:
-                print(
-                    f"Restored: {', '.join(missing)}"
-                    if missing
-                    else "External Skills are already restored"
-                )
-            return 0
-
+            return command_restore(args)
         if args.command == "update":
-            if bool(args.skills) == bool(args.all_skills):
-                raise ValueError("update requires Skill names or --all")
-            names = [] if args.all_skills else args.skills
-            changes = update_catalog(names, quiet=bool(args.json))
-            impact = "Central changes affect every project linked to these Skills."
-            payload = {
-                "updated": names or "all",
-                "changed": changes["changed"],
-                "impact": impact,
-            }
-            if args.json:
-                payload["upstream"] = changes["upstream"].stdout.strip()
-                print(json.dumps(payload, ensure_ascii=False, indent=2))
-            else:
-                print(
-                    f"Updated: {', '.join(names)}"
-                    if names
-                    else "Updated all external Skills"
-                )
-                print(f"Changed in catalog: {', '.join(changes['changed']) or 'none'}")
-                print(f"WARNING: {impact}")
-            return 0
-
-        project = resolve_project(args.project or Path.cwd())
-        locked = locked_skills()
-        sources, managed = catalog(locked)
-
-        if args.command == "status":
-            payload = status_payload(project, sources, managed, locked)
-            if args.json:
-                print(json.dumps(payload, ensure_ascii=False, indent=2))
-            else:
-                print_status(payload)
-            return 0
-
-        if args.command in {"list", "ls"}:
-            payload = catalog_payload(project, sources, locked, profiles())
-            if args.json:
-                print(json.dumps(payload, ensure_ascii=False, indent=2))
-            else:
-                print_catalog(payload)
-            return 0
-
-        if args.command in {"use", "minimal"}:
-            profile = args.profile if args.command == "use" else None
-            skills = args.skills if args.command == "use" else []
-            if args.command == "use" and not profile and not skills:
-                raise ValueError("use requires Skill names or --profile")
-            names = requested_names(skills, profile)
-            dry_run = args.dry_run
-            if not dry_run:
-                restore_if_needed(names, locked, quiet=args.json)
-                sources, managed = catalog(locked)
-            changed, changes = activate(
-                project, names, sources, managed, dry_run=dry_run
-            )
-            payload = {
-                "project": str(project),
-                "selected": names,
-                "profile": profile,
-                "dry_run": dry_run,
-                "changed": changed,
-                "clients": changes,
-                "context": estimate_sources(names, sources),
-            }
-            if args.json:
-                print(json.dumps(payload, ensure_ascii=False, indent=2))
-            else:
-                print_activation(payload)
-            return 0
-
-        if args.command == "check":
-            payload = run_check(project, sources, managed, locked)
-            if args.json:
-                print(json.dumps(payload, ensure_ascii=False, indent=2))
-            else:
-                print(payload["repository"]["output"])
-                print(
-                    "Project links: OK"
-                    if status_is_healthy(payload["project"])
-                    else "Project links: ERROR"
-                )
-            return 0 if payload["ok"] else 1
+            return command_update(args)
+        return command_project(args)
     except (OSError, KeyError, ValueError, subprocess.CalledProcessError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
-
-    parser.error(f"unknown command: {args.command}")
 
 
 if __name__ == "__main__":
