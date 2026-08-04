@@ -115,6 +115,7 @@ export async function initWorkspace(
   await assertEmptyTarget(target);
   await mkdir(target, { recursive: true });
   await copyEntries([...CORE_ENTRIES, ...INITIAL_ENTRIES], target, false);
+  await mkdir(join(target, "owned"), { recursive: true });
   await mkdir(join(target, "external"), { recursive: true });
   await mkdir(join(target, "local"), { recursive: true });
   await writeFile(join(target, "external/skills-lock.json"), EMPTY_LOCK);
@@ -132,6 +133,7 @@ export async function upgradeWorkspace(
   await assertSafeTarget(target);
   await assertWorkspace(target);
   await copyEntries(CORE_ENTRIES, target, true);
+  await mkdir(join(target, "owned"), { recursive: true });
   await chmod(join(target, "scripts/use.py"), 0o755);
   await chmod(join(target, "scripts/check.py"), 0o755);
   return { target };

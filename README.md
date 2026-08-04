@@ -32,7 +32,8 @@ control Skill is available but never activated implicitly.
 ```text
 ~/seiton/
 ├── seiton/                     Optional bundled control Skill
-├── <owned-skill>/              Skills you maintain
+├── owned/                      Skills you maintain
+│   └── <skill>/
 ├── external/
 │   └── skills-lock.json        Open-source Skill sources
 ├── local/                      Private Skills, ignored
@@ -114,7 +115,7 @@ tracks its own Skill links:
 Add a Skill you maintain directly to the workspace:
 
 ```text
-~/seiton/my-skill/SKILL.md
+~/seiton/owned/my-skill/SKILL.md
 ```
 
 Keep a private or unverified Skill under the ignored `local/` directory:
@@ -215,7 +216,7 @@ npx seiton@latest upgrade
 ```
 
 Pass the workspace path after `upgrade` if it is not `~/seiton`. Core upgrades
-replace only `scripts/` and `seiton/`. They preserve owned Skills, `local/`,
+replace only `scripts/` and `seiton/`. They preserve `owned/`, `local/`,
 `external/skills-lock.json`, `skillsets.toml`, `.gitignore`, and the workspace
 README. Maintainer clones should update with Git instead.
 

@@ -630,7 +630,7 @@ class UseSkillsTest(unittest.TestCase):
             for client in (".agents", ".claude"):
                 links = project / client / "skills"
                 links.mkdir(parents=True)
-                (links / "stale").symlink_to(ROOT / "compare-solutions")
+                (links / "stale").symlink_to(ROOT / "owned/compare-solutions")
                 (links / "foreign").symlink_to(foreign)
 
             with patch.dict(os.environ, isolated_env(parent)):
@@ -639,7 +639,9 @@ class UseSkillsTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             for client in (".agents", ".claude"):
                 links = project / client / "skills"
-                self.assertEqual((links / "deliver").resolve(), ROOT / "deliver")
+                self.assertEqual(
+                    (links / "deliver").resolve(), ROOT / "owned/deliver"
+                )
                 self.assertFalse((links / "seiton").exists())
                 self.assertFalse((links / "stale").exists())
                 self.assertEqual((links / "foreign").resolve(), foreign.resolve())

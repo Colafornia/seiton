@@ -119,7 +119,8 @@ def update_catalog(names, quiet=False):
 
 def catalog(locked):
     groups = [
-        [path for path in ROOT.iterdir() if (path / "SKILL.md").is_file()],
+        [ROOT / "seiton"],
+        list((ROOT / "owned").glob("*")),
         list((EXTERNAL / ".agents/skills").glob("*")),
         list((ROOT / "local").glob("*")) if (ROOT / "local").exists() else [],
     ]

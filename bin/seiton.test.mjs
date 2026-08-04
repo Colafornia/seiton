@@ -50,6 +50,7 @@ test("init creates a neutral valid workspace", async (context) => {
   });
   assert.equal(check.status, 0, check.stderr);
   assert.match(check.stdout, /bundled=1, owned=0, external=0, local=0/);
+  assert.equal((await lstat(join(target, "owned"))).isDirectory(), true);
 
   const list = spawnSync("python3", ["scripts/use.py", "list", "--json"], {
     cwd: target,
@@ -140,9 +141,9 @@ test("upgrade replaces only product core", async (context) => {
 
   const lock = '{\n  "version": 1,\n  "skills": {"dependency": {}}\n}\n';
   const profiles = '[profiles.mine]\nskills = ["my-skill"]\n';
-  await mkdir(join(target, "my-skill"));
+  await mkdir(join(target, "owned/my-skill"), { recursive: true });
   await writeFile(
-    join(target, "my-skill/SKILL.md"),
+    join(target, "owned/my-skill/SKILL.md"),
     "---\nname: my-skill\ndescription: Mine.\n---\n",
   );
   await writeFile(join(target, "external/skills-lock.json"), lock);
@@ -158,7 +159,10 @@ test("upgrade replaces only product core", async (context) => {
   assert.equal(await readFile(join(target, "external/skills-lock.json"), "utf8"), lock);
   assert.equal(await readFile(join(target, "skillsets.toml"), "utf8"), profiles);
   assert.equal(await readFile(join(target, "README.md"), "utf8"), "My workspace\n");
-  assert.match(await readFile(join(target, "my-skill/SKILL.md"), "utf8"), /name: my-skill/);
+  assert.match(
+    await readFile(join(target, "owned/my-skill/SKILL.md"), "utf8"),
+    /name: my-skill/,
+  );
   for (const file of ["use.py", "catalog.py", "project.py"]) {
     assert.equal(
       await readFile(join(target, `scripts/${file}`), "utf8"),
@@ -197,10 +201,9 @@ test("npm package excludes the maintainer catalog", () => {
     "AGENTS.md",
     "skillsets.toml",
     "external/skills-lock.json",
-    "code-review/SKILL.md",
-    "compare-solutions/SKILL.md",
-    "deliver/SKILL.md",
-    "reference-repo/SKILL.md",
+    "owned/compare-solutions/SKILL.md",
+    "owned/deliver/SKILL.md",
+    "owned/reference-repo/SKILL.md",
     `bin/${["repo", "skillset"].join("")}.mjs`,
     `${["sk", "set"].join("")}/SKILL.md`,
   ]) {

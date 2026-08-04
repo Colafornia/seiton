@@ -1,6 +1,6 @@
 # Repository instructions
 
-- Keep user-owned Skills as direct children of the repository root.
+- Keep user-owned Skills as direct children of `owned/`.
 - Manage open-source Skills only through `npx skills` from `external/`; do not
   edit generated copies directly.
 - Keep unverified or private Skills under ignored `local/`.
