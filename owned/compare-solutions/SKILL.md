@@ -28,6 +28,9 @@ Gather:
 - relevant test seams and verification options;
 - genuine unknowns.
 
+For ASTRYX-based interface decisions, read
+`references/astryx.md` and verify decision-changing details against upstream.
+
 Do not include a preferred solution or the implementer's rationale.
 
 ## 3. Generate independent proposals
