@@ -40,7 +40,7 @@ test("init creates a neutral valid workspace", async (context) => {
   assert.equal((await lstat(join(binDirectory, "seiton"))).isSymbolicLink(), true);
   assert.equal(
     resolve(binDirectory, await readlink(join(binDirectory, "seiton"))),
-    join(target, "scripts/use.py"),
+    join(target, "scripts/cli.py"),
   );
   assert.equal(result.cli.status, "created");
 
@@ -52,7 +52,7 @@ test("init creates a neutral valid workspace", async (context) => {
   assert.match(check.stdout, /bundled=1, owned=0, external=0, local=0/);
   assert.equal((await lstat(join(target, "owned"))).isDirectory(), true);
 
-  const list = spawnSync("python3", ["scripts/use.py", "list", "--json"], {
+  const list = spawnSync("python3", ["scripts/cli.py", "list", "--json"], {
     cwd: target,
     encoding: "utf8",
   });
@@ -62,7 +62,7 @@ test("init creates a neutral valid workspace", async (context) => {
     ["seiton"],
   );
 
-  const minimal = spawnSync("python3", ["scripts/use.py", "minimal"], {
+  const minimal = spawnSync("python3", ["scripts/cli.py", "minimal"], {
     cwd: target,
     encoding: "utf8",
   });
@@ -149,7 +149,7 @@ test("upgrade replaces only product core", async (context) => {
   await writeFile(join(target, "external/skills-lock.json"), lock);
   await writeFile(join(target, "skillsets.toml"), profiles);
   await writeFile(join(target, "README.md"), "My workspace\n");
-  for (const file of ["use.py", "catalog.py", "project.py"]) {
+  for (const file of ["cli.py", "catalog.py", "selection.py"]) {
     await writeFile(join(target, `scripts/${file}`), "stale\n");
   }
   await writeFile(join(target, "seiton/SKILL.md"), "stale\n");
@@ -163,7 +163,7 @@ test("upgrade replaces only product core", async (context) => {
     await readFile(join(target, "owned/my-skill/SKILL.md"), "utf8"),
     /name: my-skill/,
   );
-  for (const file of ["use.py", "catalog.py", "project.py"]) {
+  for (const file of ["cli.py", "catalog.py", "selection.py"]) {
     assert.equal(
       await readFile(join(target, `scripts/${file}`), "utf8"),
       await readFile(join(ROOT, `scripts/${file}`), "utf8"),
@@ -188,9 +188,9 @@ test("npm package excludes the maintainer catalog", () => {
   for (const required of [
     "package.json",
     "bin/seiton.mjs",
-    "scripts/use.py",
+    "scripts/cli.py",
     "scripts/catalog.py",
-    "scripts/project.py",
+    "scripts/selection.py",
     "scripts/check.py",
     "seiton/SKILL.md",
   ]) {

@@ -19,9 +19,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CORE_ENTRIES = [
-  "scripts/use.py",
+  "scripts/cli.py",
   "scripts/catalog.py",
-  "scripts/project.py",
+  "scripts/selection.py",
   "scripts/check.py",
   "seiton",
 ];
@@ -87,7 +87,7 @@ async function assertWorkspace(target) {
 }
 
 async function ensureCliLink(target, binDirectory) {
-  const executable = join(target, "scripts/use.py");
+  const executable = join(target, "scripts/cli.py");
   const link = join(binDirectory, "seiton");
   await mkdir(binDirectory, { recursive: true });
 
@@ -121,7 +121,7 @@ export async function initWorkspace(
   await writeFile(join(target, "external/skills-lock.json"), EMPTY_LOCK);
   await writeFile(join(target, "skillsets.toml"), EMPTY_PROFILES);
   await writeFile(join(target, ".gitignore"), GITIGNORE);
-  await chmod(join(target, "scripts/use.py"), 0o755);
+  await chmod(join(target, "scripts/cli.py"), 0o755);
   await chmod(join(target, "scripts/check.py"), 0o755);
   return { target, cli: await ensureCliLink(target, resolve(binDirectory)) };
 }
@@ -134,7 +134,7 @@ export async function upgradeWorkspace(
   await assertWorkspace(target);
   await copyEntries(CORE_ENTRIES, target, true);
   await mkdir(join(target, "owned"), { recursive: true });
-  await chmod(join(target, "scripts/use.py"), 0o755);
+  await chmod(join(target, "scripts/cli.py"), 0o755);
   await chmod(join(target, "scripts/check.py"), 0o755);
   return { target };
 }

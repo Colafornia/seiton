@@ -22,8 +22,9 @@ project or install user-managed Skills globally.
 4. Preview the exact command with `--dry-run --json`:
 
    ```sh
-   seiton use <name> [...] --project <project> --dry-run --json
-   seiton use --profile <profile> --project <project> --dry-run --json
+   seiton switch <name> [...] --project <project> --dry-run --json
+   seiton switch --profile <profile> --project <project> --dry-run --json
+   seiton enable <name> [...] --project <project> --dry-run --json
    seiton minimal --project <project> --dry-run --json
    ```
 
@@ -32,8 +33,9 @@ project or install user-managed Skills globally.
 
 ## Execute and verify
 
-Run only the confirmed command. A selection replaces the previous
-Seiton-managed overlay for both clients; `minimal` selects an empty overlay.
+Run only the confirmed command. `switch` replaces the previous Seiton-managed
+overlay for both clients, `enable` adds to it, and `minimal` selects an empty
+overlay.
 Preserve project directories and links outside the catalog.
 
 Finish project changes with `seiton status --project <project> --json` and

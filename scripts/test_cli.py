@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts import catalog as catalog_module
-from scripts import use
+from scripts import check, cli, selection
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -28,7 +28,7 @@ def run_cli(project, *args):
     return subprocess.run(
         [
             sys.executable,
-            str(ROOT / "scripts/use.py"),
+            str(ROOT / "scripts/cli.py"),
             *args,
             "--project",
             str(project),
@@ -41,7 +41,7 @@ def run_cli(project, *args):
 
 class UseSkillsTest(unittest.TestCase):
     def test_legacy_top_level_selection_options_are_rejected(self):
-        parser = use.build_parser()
+        parser = cli.build_parser()
 
         for option in (["--catalog"], ["--skill", "tdd"], ["--profile", "review"]):
             with self.subTest(option=option), redirect_stderr(io.StringIO()):
@@ -49,7 +49,7 @@ class UseSkillsTest(unittest.TestCase):
                     parser.parse_args(option)
 
     def test_catalog_commands_reject_project_option(self):
-        parser = use.build_parser()
+        parser = cli.build_parser()
 
         for command in (
             ["add", "owner/repo", "tdd"],
@@ -61,7 +61,7 @@ class UseSkillsTest(unittest.TestCase):
                     parser.parse_args([*command, "--project", "/tmp/project"])
 
     def test_ls_alias_is_preserved(self):
-        self.assertEqual(use.build_parser().parse_args(["ls"]).command, "ls")
+        self.assertEqual(cli.build_parser().parse_args(["ls"]).command, "ls")
 
     def test_local_profiles_override_shared_profiles(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -75,14 +75,14 @@ class UseSkillsTest(unittest.TestCase):
             )
 
             self.assertEqual(
-                use.profiles(root), {"review": {"skills": ["code-review"]}}
+                cli.profiles(root), {"review": {"skills": ["code-review"]}}
             )
 
-    def test_use_rejects_skill_names_with_profile(self):
+    def test_switch_rejects_skill_names_with_profile(self):
         with tempfile.TemporaryDirectory() as directory, redirect_stderr(io.StringIO()):
-            result = use.main(
+            result = cli.main(
                 [
-                    "use",
+                    "switch",
                     "tdd",
                     "--profile",
                     "delivery",
@@ -110,7 +110,7 @@ class UseSkillsTest(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            payload = use.catalog_payload(
+            payload = cli.catalog_payload(
                 project,
                 {"example": source.resolve()},
                 {"example": {"source": "alice/tools"}},
@@ -133,7 +133,7 @@ class UseSkillsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             result = subprocess.run(
-                [sys.executable, str(ROOT / "scripts/use.py")],
+                [sys.executable, str(ROOT / "scripts/cli.py")],
                 cwd=project,
                 text=True,
                 capture_output=True,
@@ -186,10 +186,10 @@ class UseSkillsTest(unittest.TestCase):
         }
         output = io.StringIO()
         with (
-            patch("scripts.use.global_skills_paths", return_value=[Path("/global")]),
+            patch("scripts.cli.global_skills_paths", return_value=[Path("/global")]),
             redirect_stdout(output),
         ):
-            use.print_status(payload)
+            cli.print_status(payload)
 
         text = output.getvalue()
         self.assertIn("│   └── owner/repo\n│       ├── ready", text)
@@ -226,10 +226,10 @@ class UseSkillsTest(unittest.TestCase):
         }
         output = io.StringIO()
         with (
-            patch("scripts.use.shutil.get_terminal_size", return_value=terminal_size((60, 24))),
+            patch("scripts.cli.shutil.get_terminal_size", return_value=terminal_size((60, 24))),
             redirect_stdout(output),
         ):
-            use.print_catalog(payload)
+            cli.print_catalog(payload)
 
         lines = output.getvalue().splitlines()
         self.assertIn("NAME      SKILLS  SELECTION", lines)
@@ -268,7 +268,7 @@ class UseSkillsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
 
-            result = run_cli(project, "use", "seiton")
+            result = run_cli(project, "switch", "seiton")
 
             self.assertEqual(result.returncode, 0, result.stderr)
             for client in (".agents", ".claude"):
@@ -280,7 +280,7 @@ class UseSkillsTest(unittest.TestCase):
     def test_minimal_removes_previously_selected_seiton(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
-            self.assertEqual(run_cli(project, "use", "seiton").returncode, 0)
+            self.assertEqual(run_cli(project, "switch", "seiton").returncode, 0)
 
             result = run_cli(project, "minimal")
 
@@ -309,7 +309,7 @@ class UseSkillsTest(unittest.TestCase):
             patch("scripts.catalog.subprocess.run") as run,
             patch("pathlib.Path.is_file", side_effect=[False, True]),
         ):
-            use.restore_if_needed(
+            cli.restore_if_needed(
                 ["missing"],
                 {"missing": {"source": "alice/skills", "sourceType": "github"}},
             )
@@ -350,12 +350,12 @@ class UseSkillsTest(unittest.TestCase):
     def test_restore_does_not_require_a_git_project(self):
         output = io.StringIO()
         with (
-            patch("scripts.use.locked_skills", return_value={}),
-            patch("scripts.use.restore_if_needed", return_value=[]) as restore,
-            patch("scripts.use.resolve_project") as resolve_project,
+            patch("scripts.cli.locked_skills", return_value={}),
+            patch("scripts.cli.restore_if_needed", return_value=[]) as restore,
+            patch("scripts.cli.resolve_project") as resolve_project,
             redirect_stdout(output),
         ):
-            result = use.main(["restore"])
+            result = cli.main(["restore"])
 
         self.assertEqual(result, 0)
         restore.assert_called_once_with({}, {}, quiet=False)
@@ -371,7 +371,7 @@ class UseSkillsTest(unittest.TestCase):
             ),
             patch("pathlib.Path.is_file", return_value=True),
         ):
-            use.add_to_catalog("owner/repo", ["tdd", "debug"], quiet=True)
+            cli.add_to_catalog("owner/repo", ["tdd", "debug"], quiet=True)
 
         run.assert_called_once_with(
             [
@@ -409,7 +409,7 @@ class UseSkillsTest(unittest.TestCase):
             ),
             patch("pathlib.Path.is_file", return_value=True),
         ):
-            changes = use.add_to_catalog(
+            changes = cli.add_to_catalog(
                 "owner/repo", [], all_skills=True, quiet=True
             )
 
@@ -442,19 +442,19 @@ class UseSkillsTest(unittest.TestCase):
             patch("pathlib.Path.is_file", return_value=False),
             self.assertRaisesRegex(ValueError, "missing from lock: tdd"),
         ):
-            use.add_to_catalog("owner/repo", ["tdd"])
+            cli.add_to_catalog("owner/repo", ["tdd"])
 
     def test_add_command_does_not_resolve_a_project_or_activate(self):
         output = io.StringIO()
         with (
             patch(
-                "scripts.use.add_to_catalog",
+                "scripts.cli.add_to_catalog",
                 return_value={"added": ["tdd", "debug"], "changed": []},
             ) as add,
-            patch("scripts.use.resolve_project") as resolve_project,
+            patch("scripts.cli.resolve_project") as resolve_project,
             redirect_stdout(output),
         ):
-            result = use.main(["add", "owner/repo", "tdd", "debug"])
+            result = cli.main(["add", "owner/repo", "tdd", "debug"])
 
         self.assertEqual(result, 0)
         add.assert_called_once_with(
@@ -465,16 +465,16 @@ class UseSkillsTest(unittest.TestCase):
             output.getvalue(),
             "Added to catalog: tdd, debug\n"
             "Changed in catalog: none\n"
-            "Activate with: seiton use tdd debug\n",
+            "Activate with: seiton switch tdd debug\n",
         )
 
     def test_add_requires_skill_names_or_all(self):
         error = io.StringIO()
         with (
-            patch("scripts.use.add_to_catalog") as add,
+            patch("scripts.cli.add_to_catalog") as add,
             redirect_stderr(error),
         ):
-            result = use.main(["add", "owner/repo"])
+            result = cli.main(["add", "owner/repo"])
 
         self.assertEqual(result, 1)
         add.assert_not_called()
@@ -482,10 +482,10 @@ class UseSkillsTest(unittest.TestCase):
 
     def test_add_rejects_skill_names_with_all(self):
         with (
-            patch("scripts.use.add_to_catalog") as add,
+            patch("scripts.cli.add_to_catalog") as add,
             redirect_stderr(io.StringIO()),
         ):
-            result = use.main(["add", "owner/repo", "tdd", "--all"])
+            result = cli.main(["add", "owner/repo", "tdd", "--all"])
 
         self.assertEqual(result, 1)
         add.assert_not_called()
@@ -494,13 +494,13 @@ class UseSkillsTest(unittest.TestCase):
         output = io.StringIO()
         with (
             patch(
-                "scripts.use.add_to_catalog",
+                "scripts.cli.add_to_catalog",
                 return_value={"added": [], "changed": []},
             ) as add,
-            patch("scripts.use.resolve_project") as resolve_project,
+            patch("scripts.cli.resolve_project") as resolve_project,
             redirect_stdout(output),
         ):
-            result = use.main(["add", "owner/repo", "--all"])
+            result = cli.main(["add", "owner/repo", "--all"])
 
         self.assertEqual(result, 0)
         add.assert_called_once_with(
@@ -520,7 +520,7 @@ class UseSkillsTest(unittest.TestCase):
                 side_effect=[{"tdd": {}}, {"tdd": {"updated": True}}],
             ),
         ):
-            changes = use.update_catalog(["tdd"], quiet=True)
+            changes = cli.update_catalog(["tdd"], quiet=True)
 
         run.assert_called_once_with(
             [
@@ -543,7 +543,7 @@ class UseSkillsTest(unittest.TestCase):
             patch("scripts.catalog.subprocess.run") as run,
             patch("scripts.catalog.locked_skills", side_effect=[{}, {}]),
         ):
-            use.update_catalog([], quiet=True)
+            cli.update_catalog([], quiet=True)
 
         run.assert_called_once_with(
             [
@@ -563,13 +563,13 @@ class UseSkillsTest(unittest.TestCase):
         output = io.StringIO()
         with (
             patch(
-                "scripts.use.update_catalog",
+                "scripts.cli.update_catalog",
                 return_value={"changed": ["tdd"], "upstream": None},
             ) as update,
-            patch("scripts.use.resolve_project") as resolve_project,
+            patch("scripts.cli.resolve_project") as resolve_project,
             redirect_stdout(output),
         ):
-            result = use.main(["update", "tdd"])
+            result = cli.main(["update", "tdd"])
 
         self.assertEqual(result, 0)
         update.assert_called_once_with(["tdd"], quiet=False)
@@ -584,10 +584,10 @@ class UseSkillsTest(unittest.TestCase):
     def test_update_rejects_an_empty_selection(self):
         error = io.StringIO()
         with (
-            patch("scripts.use.update_catalog") as update,
+            patch("scripts.cli.update_catalog") as update,
             redirect_stderr(error),
         ):
-            result = use.main(["update"])
+            result = cli.main(["update"])
 
         self.assertEqual(result, 1)
         update.assert_not_called()
@@ -595,10 +595,10 @@ class UseSkillsTest(unittest.TestCase):
 
     def test_update_rejects_names_with_all(self):
         with (
-            patch("scripts.use.update_catalog") as update,
+            patch("scripts.cli.update_catalog") as update,
             redirect_stderr(io.StringIO()),
         ):
-            result = use.main(["update", "tdd", "--all"])
+            result = cli.main(["update", "tdd", "--all"])
 
         self.assertEqual(result, 1)
         update.assert_not_called()
@@ -606,13 +606,13 @@ class UseSkillsTest(unittest.TestCase):
     def test_update_all_maps_to_upstream_all_without_a_git_project(self):
         with (
             patch(
-                "scripts.use.update_catalog",
+                "scripts.cli.update_catalog",
                 return_value={"changed": [], "upstream": None},
             ) as update,
-            patch("scripts.use.resolve_project") as resolve_project,
+            patch("scripts.cli.resolve_project") as resolve_project,
             redirect_stdout(io.StringIO()),
         ):
-            result = use.main(["update", "--all"])
+            result = cli.main(["update", "--all"])
 
         self.assertEqual(result, 0)
         update.assert_called_once_with([], quiet=False)
@@ -634,7 +634,7 @@ class UseSkillsTest(unittest.TestCase):
                 (links / "foreign").symlink_to(foreign)
 
             with patch.dict(os.environ, isolated_env(parent)):
-                result = run_cli(project, "use", "deliver")
+                result = run_cli(project, "switch", "deliver")
 
             self.assertEqual(result.returncode, 0, result.stderr)
             for client in (".agents", ".claude"):
@@ -646,10 +646,29 @@ class UseSkillsTest(unittest.TestCase):
                 self.assertFalse((links / "stale").exists())
                 self.assertEqual((links / "foreign").resolve(), foreign.resolve())
 
+    def test_enable_adds_skills_without_removing_active_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+
+            self.assertEqual(
+                run_cli(project, "switch", "deliver").returncode, 0
+            )
+            result = run_cli(project, "enable", "seiton", "--json")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                json.loads(result.stdout)["selected"], ["deliver", "seiton"]
+            )
+            for client in (".agents", ".claude"):
+                links = project / client / "skills"
+                self.assertEqual(
+                    {link.name for link in links.iterdir()}, {"deliver", "seiton"}
+                )
+
     def test_dry_run_does_not_create_links(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
-            result = run_cli(project, "use", "deliver", "--dry-run", "--json")
+            result = run_cli(project, "switch", "deliver", "--dry-run", "--json")
 
             self.assertEqual(result.returncode, 0, result.stderr)
             payload = json.loads(result.stdout)
@@ -665,7 +684,7 @@ class UseSkillsTest(unittest.TestCase):
             conflict = project / ".claude/skills/deliver"
             conflict.mkdir(parents=True)
 
-            result = run_cli(project, "use", "deliver")
+            result = run_cli(project, "switch", "deliver")
 
             self.assertEqual(result.returncode, 1)
             self.assertFalse((project / ".agents/skills/deliver").exists())
@@ -681,14 +700,14 @@ class UseSkillsTest(unittest.TestCase):
 
             with (
                 patch.dict(
-                    "scripts.project.os.environ",
+                    "scripts.selection.os.environ",
                     isolated_env(root),
                 ),
-                patch("scripts.use.restore_if_needed") as restore,
+                patch("scripts.cli.restore_if_needed") as restore,
                 redirect_stderr(io.StringIO()),
             ):
-                result = use.main(
-                    ["use", "deliver", "--project", str(project)]
+                result = cli.main(
+                    ["switch", "deliver", "--project", str(project)]
                 )
 
             self.assertEqual(result, 1)
@@ -720,7 +739,7 @@ class UseSkillsTest(unittest.TestCase):
                 return original(link, target, **kwargs)
 
             with (
-                patch.dict("scripts.project.os.environ", isolated_env(root)),
+                patch.dict("scripts.selection.os.environ", isolated_env(root)),
                 patch.object(Path, "symlink_to", fail_first),
             ):
                 with self.assertRaisesRegex(
@@ -729,7 +748,7 @@ class UseSkillsTest(unittest.TestCase):
                     r"codex:symlink:skill, claude:unlink:skill, "
                     r"claude:symlink:skill",
                 ):
-                    use.activate(
+                    selection.apply_selection(
                         project,
                         ["skill"],
                         {"skill": new.resolve()},
@@ -739,8 +758,8 @@ class UseSkillsTest(unittest.TestCase):
             self.assertFalse((project / ".agents/skills/skill").exists())
             self.assertEqual((project / ".claude/skills/skill").resolve(), old.resolve())
 
-            with patch.dict("scripts.project.os.environ", isolated_env(root)):
-                changed, _ = use.activate(
+            with patch.dict("scripts.selection.os.environ", isolated_env(root)):
+                changed, _ = selection.apply_selection(
                     project,
                     ["skill"],
                     {"skill": new.resolve()},
@@ -759,17 +778,17 @@ class UseSkillsTest(unittest.TestCase):
             invalid_status = {
                 "clients": {
                     client: {"seiton": [], "project": [], "global": []}
-                    for client in use.CLIENTS
+                    for client in selection.CLIENTS
                 }
             }
             error = io.StringIO()
             with (
-                patch.dict("scripts.project.os.environ", isolated_env(project)),
-                patch("scripts.project.status_payload", return_value=invalid_status),
+                patch.dict("scripts.selection.os.environ", isolated_env(project)),
+                patch("scripts.selection.inspect_selection", return_value=invalid_status),
                 redirect_stderr(error),
             ):
-                result = use.main(
-                    ["use", "deliver", "--project", str(project)]
+                result = cli.main(
+                    ["switch", "deliver", "--project", str(project)]
                 )
 
             self.assertEqual(result, 1)
@@ -791,10 +810,10 @@ class UseSkillsTest(unittest.TestCase):
                 links.mkdir(parents=True)
                 (links / "foreign").symlink_to(target)
 
-            payload = use.status_payload(project, {}, set())
+            payload = selection.inspect_selection(project, {}, set())
 
             self.assertTrue(payload["synced"])
-            self.assertTrue(use.status_is_healthy(payload))
+            self.assertTrue(selection.selection_is_healthy(payload))
             self.assertEqual(
                 [entry["name"] for entry in payload["clients"]["codex"]["project"]],
                 ["foreign"],
@@ -858,10 +877,10 @@ class UseSkillsTest(unittest.TestCase):
             (codex_global / "invalid-global").mkdir()
 
             with patch.dict(
-                "scripts.project.os.environ",
+                "scripts.selection.os.environ",
                 {"HOME": str(root / "home"), "CODEX_HOME": str(codex_home)},
             ):
-                payload = use.status_payload(
+                payload = selection.inspect_selection(
                     project,
                     sources,
                     managed_paths,
@@ -920,10 +939,10 @@ class UseSkillsTest(unittest.TestCase):
                 (skills / "managed").symlink_to(target, target_is_directory=True)
 
             with patch.dict(
-                "scripts.project.os.environ",
+                "scripts.selection.os.environ",
                 {"HOME": str(root / "home"), "CODEX_HOME": str(root / "codex")},
             ):
-                payload = use.status_payload(
+                payload = selection.inspect_selection(
                     project, {"managed": targets[0]}, set(targets)
                 )
 
@@ -949,14 +968,14 @@ class UseSkillsTest(unittest.TestCase):
                 )
 
             with patch.dict(
-                "scripts.project.os.environ",
+                "scripts.selection.os.environ",
                 {
                     "HOME": str(home),
                     "CODEX_HOME": str(codex_home),
                     "CLAUDE_CONFIG_DIR": str(claude_home),
                 },
             ):
-                payload = use.status_payload(project, {}, set())
+                payload = selection.inspect_selection(project, {}, set())
 
             self.assertEqual(
                 [entry["name"] for entry in payload["clients"]["codex"]["global"]],
@@ -979,7 +998,30 @@ class UseSkillsTest(unittest.TestCase):
             nested = project / "one/two"
             nested.mkdir(parents=True)
 
-            self.assertEqual(use.resolve_project(nested), project.resolve())
+            self.assertEqual(cli.resolve_project(nested), project.resolve())
+
+    def test_workspace_validation_returns_structured_errors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "seiton").mkdir()
+            (root / "seiton/SKILL.md").write_text(
+                "---\nname: seiton\n---\n", encoding="utf-8"
+            )
+            (root / "external").mkdir()
+            (root / "external/skills-lock.json").write_text(
+                '{"skills": {}}', encoding="utf-8"
+            )
+            (root / "skillsets.toml").write_text(
+                "[profiles]\n", encoding="utf-8"
+            )
+            (root / ".gitignore").write_text("", encoding="utf-8")
+
+            report = check.validate_workspace(root)
+
+            self.assertFalse(report["ok"])
+            self.assertTrue(
+                any("missing ignore rules" in error for error in report["errors"])
+            )
 
 
 if __name__ == "__main__":

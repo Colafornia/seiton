@@ -61,7 +61,7 @@ def read_skill_lock(path):
     return skills if isinstance(skills, dict) else {}
 
 
-def status_payload(project, sources, managed, locked=None):
+def inspect_selection(project, sources, managed, locked=None):
     clients = {}
     seiton_signatures = {}
     readable_seiton = set()
@@ -140,7 +140,19 @@ def status_payload(project, sources, managed, locked=None):
     }
 
 
-def activation_plan(project, names, sources, managed):
+def selection_is_healthy(status):
+    return (
+        status["synced"]
+        and not status["conflicts"]
+        and all(
+            entry["health"] == "healthy"
+            for layers in status["clients"].values()
+            for entry in layers["seiton"]
+        )
+    )
+
+
+def plan_selection(project, names, sources, managed):
     selected = set(names)
     missing = sorted(selected - set(sources))
     if missing:
@@ -195,7 +207,7 @@ def activation_plan(project, names, sources, managed):
     return plan
 
 
-def activation_operations(plan):
+def _selection_operations(plan):
     operations = []
     for client, changes in plan.items():
         operations.extend(
@@ -217,7 +229,7 @@ def format_operations(operations):
     ) or "none"
 
 
-def apply_activation(project, sources, operations):
+def _apply_operations(project, sources, operations):
     completed = []
     try:
         for directory in CLIENTS.values():
@@ -238,8 +250,8 @@ def apply_activation(project, sources, operations):
         ) from exc
 
 
-def verify_activation(project, names, sources, managed, operations):
-    status = status_payload(project, sources, managed)
+def _verify_selection(project, names, sources, managed, operations):
+    status = inspect_selection(project, sources, managed)
     expected = {
         (name, str(sources[name].resolve()), "healthy") for name in names
     }
@@ -259,12 +271,12 @@ def verify_activation(project, names, sources, managed, operations):
         )
 
 
-def activate(project, names, sources, managed, dry_run=False):
-    plan = activation_plan(project, names, sources, managed)
-    operations = activation_operations(plan)
+def apply_selection(project, names, sources, managed, dry_run=False):
+    plan = plan_selection(project, names, sources, managed)
+    operations = _selection_operations(plan)
     if dry_run:
         return bool(operations), plan
 
-    apply_activation(project, sources, operations)
-    verify_activation(project, names, sources, managed, operations)
+    _apply_operations(project, sources, operations)
+    _verify_selection(project, names, sources, managed, operations)
     return bool(operations), plan

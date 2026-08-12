@@ -10,11 +10,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def fail(message):
-    print(f"ERROR: {message}", file=sys.stderr)
-    return 1
-
-
 def skill_name(path):
     text = (path / "SKILL.md").read_text(encoding="utf-8")
     if not text.startswith("---\n"):
@@ -26,11 +21,11 @@ def skill_name(path):
     return match.group(1).strip()
 
 
-def source_dirs():
-    bundled = ROOT / "seiton"
-    owned = list((ROOT / "owned").glob("*"))
-    external = list((ROOT / "external/.agents/skills").glob("*"))
-    local = list((ROOT / "local").glob("*")) if (ROOT / "local").exists() else []
+def source_dirs(root=ROOT):
+    bundled = root / "seiton"
+    owned = list((root / "owned").glob("*"))
+    external = list((root / "external/.agents/skills").glob("*"))
+    local = list((root / "local").glob("*")) if (root / "local").exists() else []
     return {
         "bundled": [bundled] if (bundled / "SKILL.md").is_file() else [],
         "owned": sorted(path for path in owned if (path / "SKILL.md").is_file()),
@@ -39,9 +34,9 @@ def source_dirs():
     }
 
 
-def main():
-    errors = 0
-    sources = source_dirs()
+def validate_workspace(root=ROOT):
+    errors = []
+    sources = source_dirs(root)
     skills = {}
 
     for paths in sources.values():
@@ -49,31 +44,36 @@ def main():
             try:
                 name = skill_name(path)
             except (OSError, ValueError) as exc:
-                errors += fail(f"{path.relative_to(ROOT)}: {exc}")
+                errors.append(f"{path.relative_to(root)}: {exc}")
                 continue
             if name != path.name:
-                errors += fail(f"{path.relative_to(ROOT)}: name is {name!r}")
+                errors.append(f"{path.relative_to(root)}: name is {name!r}")
             if name in skills:
-                errors += fail(f"duplicate skill {name!r}: {skills[name]} and {path}")
+                errors.append(f"duplicate skill {name!r}: {skills[name]} and {path}")
             skills[name] = path.resolve()
 
-    lock_path = ROOT / "external/skills-lock.json"
+    lock_path = root / "external/skills-lock.json"
     try:
         locked = set(json.loads(lock_path.read_text(encoding="utf-8"))["skills"])
     except (OSError, KeyError, json.JSONDecodeError) as exc:
-        errors += fail(f"{lock_path.relative_to(ROOT)}: {exc}")
+        errors.append(f"{lock_path.relative_to(root)}: {exc}")
         locked = set()
     installed = {path.name for path in sources["external"]}
-    external_cache = ROOT / "external/.agents/skills"
+    external_cache = root / "external/.agents/skills"
     if external_cache.exists() and locked != installed:
-        errors += fail(f"external lock mismatch: locked={sorted(locked)}, installed={sorted(installed)}")
+        errors.append(
+            f"external lock mismatch: locked={sorted(locked)}, "
+            f"installed={sorted(installed)}"
+        )
     local_names = {
         path.name
         for category in ("bundled", "owned", "local")
         for path in sources[category]
     }
     if locked & local_names:
-        errors += fail(f"lock names collide with local sources: {sorted(locked & local_names)}")
+        errors.append(
+            f"lock names collide with local sources: {sorted(locked & local_names)}"
+        )
 
     required_ignores = {
         ".agent/",
@@ -83,13 +83,13 @@ def main():
         "external/.claude/",
         "local/",
     }
-    ignores = set((ROOT / ".gitignore").read_text(encoding="utf-8").splitlines())
+    ignores = set((root / ".gitignore").read_text(encoding="utf-8").splitlines())
     if required_ignores - ignores:
-        errors += fail(f"missing ignore rules: {sorted(required_ignores - ignores)}")
+        errors.append(f"missing ignore rules: {sorted(required_ignores - ignores)}")
 
     profiles = {}
-    profile_paths = [ROOT / "skillsets.toml"]
-    local_profiles = ROOT / ".agent/skillsets.toml"
+    profile_paths = [root / "skillsets.toml"]
+    local_profiles = root / ".agent/skillsets.toml"
     if local_profiles.is_file():
         profile_paths.append(local_profiles)
     try:
@@ -98,49 +98,60 @@ def main():
                 tomllib.loads(profile_path.read_text(encoding="utf-8"))["profiles"]
             )
     except (OSError, KeyError, tomllib.TOMLDecodeError) as exc:
-        errors += fail(f"{profile_path.relative_to(ROOT)}: {exc}")
+        errors.append(f"{profile_path.relative_to(root)}: {exc}")
         profiles = {}
     for profile, config in profiles.items():
         names = config.get("skills", [])
         if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
-            errors += fail(f"profile {profile!r} must contain a string list")
+            errors.append(f"profile {profile!r} must contain a string list")
             continue
         missing = sorted(set(names) - (set(skills) | locked))
         if missing:
-            errors += fail(f"profile {profile!r} references missing skills: {missing}")
+            errors.append(f"profile {profile!r} references missing skills: {missing}")
 
     active = {}
     clients = (".agents", ".claude")
-    has_active_links = any((ROOT / client / "skills").is_dir() for client in clients)
+    has_active_links = any((root / client / "skills").is_dir() for client in clients)
     managed = set(skills.values()) | {
         (external_cache / name).resolve() for name in locked
     }
     for client in clients:
-        link_dir = ROOT / client / "skills"
+        link_dir = root / client / "skills"
         if not link_dir.is_dir():
             if has_active_links:
-                errors += fail(f"missing project entry: {link_dir.relative_to(ROOT)}")
+                errors.append(f"missing project entry: {link_dir.relative_to(root)}")
             active[client] = set()
             continue
         names = set()
         for link in link_dir.iterdir():
             names.add(link.name)
             if not link.is_symlink():
-                errors += fail(f"{link.relative_to(ROOT)} is not a symlink")
+                errors.append(f"{link.relative_to(root)} is not a symlink")
                 continue
             target = (link.parent / os.readlink(link)).resolve()
             if target not in managed:
-                errors += fail(f"{link.relative_to(ROOT)} points outside the catalog")
+                errors.append(f"{link.relative_to(root)} points outside the catalog")
             elif not (target / "SKILL.md").is_file():
-                errors += fail(f"{link.relative_to(ROOT)} has no readable SKILL.md")
+                errors.append(f"{link.relative_to(root)} has no readable SKILL.md")
         active[client] = names
     if active.get(".agents") != active.get(".claude"):
-        errors += fail("Codex and Claude Code active skill sets differ")
+        errors.append("Codex and Claude Code active skill sets differ")
 
-    if errors:
-        return 1
     counts = ", ".join(f"{name}={len(paths)}" for name, paths in sources.items())
-    print(f"OK: {counts}; active={','.join(sorted(active['.agents']))}")
+    return {
+        "ok": not errors,
+        "errors": errors,
+        "summary": f"OK: {counts}; active={','.join(sorted(active['.agents']))}",
+    }
+
+
+def main():
+    report = validate_workspace()
+    if not report["ok"]:
+        for error in report["errors"]:
+            print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+    print(report["summary"])
     return 0
 
 

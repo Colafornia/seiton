@@ -9,9 +9,9 @@
   },
   "files": [
     "bin/seiton.mjs",
-    "scripts/use.py",
+    "scripts/cli.py",
     "scripts/catalog.py",
-    "scripts/project.py",
+    "scripts/selection.py",
     "scripts/check.py",
     "seiton",
     "README.md",
@@ -21,7 +21,7 @@
     "node": ">=22.20"
   },
   "scripts": {
-    "test": "node --test bin/seiton.test.mjs && python3 -m unittest scripts/test_use.py",
+    "test": "node --test bin/seiton.test.mjs && python3 -m unittest scripts/test_cli.py",
     "check": "python3 scripts/check.py"
   }
 }

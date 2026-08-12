@@ -1,94 +1,191 @@
 <h1 align="center">seiton</h1>
 
-<p align="center">A central Skill workspace for coding agents. Keep owned, private, and open-source Skills in one place, then activate only what each repository needs.</p>
-
-<!-- <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
-</p> -->
+<p align="center">A central Skill catalog with repository-specific activation for Codex and Claude Code.</p>
 
 ![seiton keeps Skills in one central workspace and activates a repository-specific selection](docs/seiton-workflow.svg)
 
-## Why
+## Why seiton
 
-Skills are easy to install and easy to forget. Global installations grow
-stale, add discovery context to every session, and spread Skill management
-across agent-specific directories.
+Installing a Skill is easy. Keeping the right Skills active across repositories
+and coding agents is not.
 
-seiton instead:
+seiton gives you one place to:
 
-- keeps owned, private, and open-source Skills in one source of truth;
-- activates an exact Seiton-managed overlay for each repository;
-- allows an empty overlay with `minimal`;
-- switches Codex and Claude Code together;
-- restores and updates open-source Skills without committing downloaded copies;
-- lets you use Skills unchanged, combine them, or build on them.
+- maintain owned, private, and open-source Skills;
+- activate only what each repository needs;
+- apply the same managed selection to Codex and Claude Code;
+- preserve existing project and global Skills;
+- restore and update open-source Skills without committing downloaded copies.
 
-`npx skills` handles open-source Skill installation and updates. seiton adds
-the central catalog and repository-specific selection. Its bundled `seiton`
-control Skill is available but never activated implicitly.
+Use Skills unchanged, combine them, or adapt them into new workflows. Your
+catalog stays central; each repository gets its own focused selection.
+
+`npx skills` handles open-source sources and updates. seiton adds the catalog,
+repository selection, and verification around it.
 
 ## Workspace structure
 
 ```text
 ~/seiton/
-├── seiton/                     Optional bundled control Skill
+├── seiton/                     Optional control Skill
 ├── owned/                      Skills you maintain
 │   └── <skill>/
 ├── external/
-│   └── skills-lock.json        Open-source Skill sources
-├── local/                      Private Skills, ignored
-├── scripts/                    CLI and validator
+│   └── skills-lock.json        Open-source sources and hashes
+├── local/                      Private or unverified Skills, ignored
+├── scripts/                    CLI and validation
 └── skillsets.toml              Reusable selections
 ```
 
-The workspace can be its own Git repository and sync across machines.
-Downloaded open-source Skill copies, private Skills, and repository links stay
-uncommitted.
+The workspace can be its own Git repository and sync across machines. Commit
+your owned Skills, configuration, and `external/skills-lock.json`—not downloaded
+copies, private Skills, or repository links.
 
-## Install
+## Quick start
 
-### Requirements
+Requires Python 3.11+, Node.js 22.20+ with `npx`, and macOS or Linux.
 
-- Python 3.11 or newer
-- Node.js 22.20 or newer with `npx`
-- macOS or Linux
-
-Create a clean workspace:
+The npm package is not published yet. Install from source:
 
 ```sh
-npx seiton@latest init
+git clone https://github.com/Colafornia/seiton.git seiton-src
+cd seiton-src
+npm link
+seiton init
 ```
 
-This creates `~/seiton`, installs the `seiton` command in `~/.local/bin`, and
-starts with no owned Skills, open-source dependencies, profiles, or active
-overlay. The bundled control Skill is present but optional. To use another
-location:
+`seiton init` creates `~/seiton` and installs the command in `~/.local/bin`.
+Use a different workspace path if needed:
 
 ```sh
-npx seiton@latest init ~/Tools/seiton
+seiton init ~/Tools/seiton
 ```
 
-Ensure `~/.local/bin` is on `PATH`. The command is available globally; your
-Skills are not installed globally.
+Ensure `~/.local/bin` is on `PATH`.
 
-## Use
+### 1. Build your catalog
 
-Project commands can run anywhere inside a Git repository:
+Put Skills you maintain in `owned/`:
+
+```text
+~/seiton/owned/my-skill/SKILL.md
+```
+
+Keep private or unverified Skills in the ignored `local/` directory:
+
+```text
+~/seiton/local/my-private-skill/SKILL.md
+```
+
+Add reviewed open-source Skills by name:
 
 ```sh
-seiton
-seiton status [--project PATH] [--json]
+seiton add owner/repository skill-name
+seiton add owner/repository one two
+```
+
+Use `--all` only after reviewing the entire source. Adding a Skill updates the
+catalog; it does not activate the Skill in any repository.
+
+### 2. Choose Skills for a repository
+
+Run these commands anywhere inside the target Git repository:
+
+```sh
+seiton list
+seiton status
+seiton switch code-review tdd --dry-run
+seiton switch code-review tdd
+seiton enable write-github
+seiton check
+```
+
+The selection is linked into both supported clients:
+
+```text
+<repo>/.agents/skills/   Codex and compatible agents
+<repo>/.claude/skills/  Claude Code
+```
+
+seiton replaces only its managed overlay and preserves other project Skills.
+The links are machine-specific, so ignore them unless the repository
+intentionally tracks its own links:
+
+```gitignore
+.agents/skills/
+.claude/skills/
+```
+
+### 3. Maintain the catalog
+
+```sh
+seiton update tdd code-review   # update selected open-source Skills
+seiton update --all             # update every open-source Skill
+seiton restore                  # restore missing downloaded copies
+seiton check                    # validate the catalog and project links
+```
+
+Central updates are immediately visible to repositories linked to those Skills.
+Commit changes to `external/skills-lock.json`.
+
+## Reusable selections
+
+Define a profile in `skillsets.toml`:
+
+```toml
+[profiles.review]
+skills = ["code-review", "tdd"]
+```
+
+Then preview or activate it:
+
+```sh
+seiton switch --profile review --dry-run
+seiton switch --profile review
+```
+
+Machine-specific overrides belong in the ignored `.agent/skillsets.toml`. A
+local profile replaces a shared profile with the same name.
+
+Use `seiton enable SKILL...` to add Skills without removing the active
+selection. Use `seiton minimal` to remove the entire seiton-managed overlay
+while leaving other project Skills untouched.
+
+## Conversational selection
+
+The bundled `seiton` control Skill is optional and never activated implicitly:
+
+```sh
+seiton switch seiton
+```
+
+Then invoke `$seiton` without arguments to inspect the catalog, preview a
+profile or custom selection, confirm the change, and verify the result.
+
+Newly linked Skills work immediately when invoked explicitly. Start a new
+session only when you need native `$name` discovery or implicit triggering.
+
+## Context estimates
+
+`status` and selection previews estimate:
+
+- discovery tokens from each Skill's `name` and `description`;
+- body tokens if every selected `SKILL.md` were invoked.
+
+These dependency-free estimates compare selections. They are not billing,
+performance, or remaining-context measurements.
+
+## Command reference
+
+```text
+seiton [status] [--project PATH] [--json]
 seiton list [--project PATH] [--json]
-seiton use SKILL... [--project PATH] [--dry-run] [--json]
-seiton use --profile NAME [--project PATH] [--dry-run] [--json]
+seiton switch SKILL... [--project PATH] [--dry-run] [--json]
+seiton switch --profile NAME [--project PATH] [--dry-run] [--json]
+seiton enable SKILL... [--project PATH] [--dry-run] [--json]
 seiton minimal [--project PATH] [--dry-run] [--json]
 seiton check [--project PATH] [--json]
-```
 
-`ls` remains an alias for `list`. Skill names and `--profile` are mutually
-exclusive. The catalog commands do not require a Git project:
-
-```sh
 seiton add SOURCE SKILL... [--json]
 seiton add SOURCE --all [--json]
 seiton restore [--json]
@@ -96,140 +193,32 @@ seiton update SKILL... [--json]
 seiton update --all [--json]
 ```
 
-seiton links the selected Skills into:
+`ls` is an alias for `list`. For a one-off open-source Skill that should not
+join the catalog, use `npx skills use` directly.
 
-- Codex and compatible agents: `<repo>/.agents/skills/<name>`
-- Claude Code: `<repo>/.claude/skills/<name>`
+## Upgrade
 
-These are machine-specific absolute symlinks. Add the generated directories to
-each target repository's ignore rules unless that repository intentionally
-tracks its own Skill links:
-
-```gitignore
-.agents/skills/
-.claude/skills/
-```
-
-## Build your catalog
-
-Add a Skill you maintain directly to the workspace:
-
-```text
-~/seiton/owned/my-skill/SKILL.md
-```
-
-Keep a private or unverified Skill under the ignored `local/` directory:
-
-```text
-~/seiton/local/my-private-skill/SKILL.md
-```
-
-Add an open-source Skill to the catalog:
+After updating the source checkout, replace the installed core without touching
+user content:
 
 ```sh
-seiton add owner/repository skill-name
-seiton add owner/repository one two --json
+seiton upgrade
 ```
 
-Register every Skill only when the entire source has been reviewed:
+Pass the workspace path if it is not `~/seiton`. `upgrade` replaces only
+`scripts/` and `seiton/`; it preserves your catalog, profiles, local content,
+ignore rules, and workspace README.
 
-```sh
-seiton add owner/repository --all --json
-```
+## Scope and trust
 
-An empty `add` is rejected. Seiton never exposes upstream global installation:
-it always supplies explicit Skill names, the two supported clients, and
-`--yes`. Registering every Skill is not a recommendation to activate
-everything. `add` never changes project links or profiles; run `seiton use
-skill-name` separately when needed.
-
-Seiton delegates these operations to the fixed compatible version
-`skills@1.5.21` for Codex and Claude Code only.
-
-Commit `external/skills-lock.json`, not the downloaded source. Restore the
-catalog on another machine with:
-
-```sh
-seiton restore
-```
-
-Define a reusable selection in `skillsets.toml`:
-
-```toml
-[profiles.my-work]
-skills = ["my-skill", "tdd"]
-```
-
-Machine-specific profile overrides belong in the ignored
-`.agent/skillsets.toml`. A local profile with the same name replaces the shared
-profile.
-
-## Conversational selection
-
-The bundled control Skill is optional. After `seiton use seiton`, invoke
-`$seiton` without arguments to
-choose a profile, custom set, or minimal mode. It:
-
-1. reads the catalog and current selection;
-2. groups Skills by source;
-3. previews the exact link and context changes;
-4. asks for confirmation;
-5. applies the selection and verifies the result.
-
-Newly linked Skills can be used explicitly in the current session. Start a new
-session only when you need native `$name` discovery or implicit triggering.
-`minimal` changes future discovery; it cannot remove context already loaded by
-the current session.
-
-For a one-off open-source Skill that should not join the catalog, use
-`npx skills use` directly.
-
-## Context estimates
-
-`status` and selection previews report a dependency-free approximation:
-
-- discovery tokens: Skill `name` plus `description`;
-- body tokens: full `SKILL.md` content if every active Skill were invoked.
-
-References, scripts, tool output, system Skills, and plugin Skills are excluded.
-These estimates help compare selections; they are not billing or
-remaining-context measurements.
-
-## Maintain the catalog
-
-Update locked open-source Skills explicitly:
-
-```sh
-seiton update tdd codebase-design
-seiton update --all
-```
-
-An empty `seiton update` is rejected. Central updates are immediately visible
-to every project linked to the changed Skills. Commit the changed
-`external/skills-lock.json`. The lock records sources, Skill paths, and hashes;
-current entries do not pin upstream commits.
-
-Update an npm-installed seiton core without touching user content:
-
-```sh
-npx seiton@latest upgrade
-```
-
-Pass the workspace path after `upgrade` if it is not `~/seiton`. Core upgrades
-replace only `scripts/` and `seiton/`. They preserve `owned/`, `local/`,
-`external/skills-lock.json`, `skillsets.toml`, `.gitignore`, and the workspace
-README. Maintainer clones should update with Git instead.
-
-Run validation after catalog changes:
-
-```sh
-seiton check
-```
+- seiton manages only links it created; project and global Skills remain yours.
+- seiton does not audit third-party Skills. Review sources before adding them.
+- the lock records sources, paths, and hashes; current entries do not pin
+  upstream commits.
+- the CLI supports Codex and Claude Code and delegates open-source operations to
+  `skills@1.5.21`.
 
 ## Development
-
-Run the CLI tests, installer tests, repository check, and package boundary
-audit:
 
 ```sh
 npm test
@@ -239,6 +228,5 @@ npm pack --dry-run
 
 ## License
 
-seiton core and the original contents of this source repository are available
-under the [MIT License](LICENSE). User-defined and open-source Skills retain
-their own licenses.
+seiton core and the original contents of this repository are available under
+the [MIT License](LICENSE). Other Skills retain their own licenses.

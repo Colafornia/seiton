@@ -19,12 +19,14 @@ if __package__:
         skill_metadata,
         update_catalog,
     )
-    from .project import (
+    from .check import validate_workspace
+    from .selection import (
         CLIENTS,
-        activate,
-        activation_plan,
+        apply_selection,
         global_skills_paths,
-        status_payload,
+        inspect_selection,
+        plan_selection,
+        selection_is_healthy,
     )
 else:
     from catalog import (
@@ -38,12 +40,14 @@ else:
         skill_metadata,
         update_catalog,
     )
-    from project import (
+    from check import validate_workspace
+    from selection import (
         CLIENTS,
-        activate,
-        activation_plan,
+        apply_selection,
         global_skills_paths,
-        status_payload,
+        inspect_selection,
+        plan_selection,
+        selection_is_healthy,
     )
 
 
@@ -265,7 +269,7 @@ def print_catalog(payload):
     print_table(("NAME", "SOURCE", "STATE", "DESCRIPTION"), rows)
 
 
-def print_activation(payload):
+def print_selection(payload):
     action = "Preview" if payload["dry_run"] else (
         "Activated" if payload["changed"] else "Already active"
     )
@@ -284,31 +288,17 @@ def print_activation(payload):
     )
 
 
-def status_is_healthy(status):
-    return (
-        status["synced"]
-        and not status["conflicts"]
-        and all(
-            entry["health"] == "healthy"
-            for layers in status["clients"].values()
-            for entry in layers["seiton"]
-        )
-    )
-
-
 def run_check(project, sources, managed, locked=None):
-    repository = subprocess.run(
-        [sys.executable, str(ROOT / "scripts/check.py")],
-        capture_output=True,
-        text=True,
-    )
-    status = status_payload(project, sources, managed, locked)
-    project_ok = status_is_healthy(status)
+    repository = validate_workspace()
+    status = inspect_selection(project, sources, managed, locked)
+    project_ok = selection_is_healthy(status)
     return {
-        "ok": repository.returncode == 0 and project_ok,
+        "ok": repository["ok"] and project_ok,
         "repository": {
-            "ok": repository.returncode == 0,
-            "output": (repository.stdout or repository.stderr).strip(),
+            "ok": repository["ok"],
+            "output": repository["summary"] if repository["ok"] else "\n".join(
+                f"ERROR: {error}" for error in repository["errors"]
+            ),
         },
         "project": status,
     }
@@ -322,7 +312,7 @@ def add_common_options(parser, suppressed=False):
 
 def build_parser():
     parser = argparse.ArgumentParser(
-        description="Manage a minimal project-specific Skill set"
+        description="Manage a project-specific Seiton Skill selection"
     )
     parser.set_defaults(project=None, json=False, dry_run=False)
 
@@ -338,11 +328,20 @@ def build_parser():
         if name == "minimal":
             child.add_argument("--dry-run", action="store_true", default=argparse.SUPPRESS)
 
-    use = subcommands.add_parser("use")
-    add_common_options(use, suppressed=True)
-    use.add_argument("skills", nargs="*")
-    use.add_argument("--profile")
-    use.add_argument("--dry-run", action="store_true", default=argparse.SUPPRESS)
+    switch = subcommands.add_parser(
+        "switch", help="Replace the current Seiton-managed selection"
+    )
+    add_common_options(switch, suppressed=True)
+    switch.add_argument("skills", nargs="*")
+    switch.add_argument("--profile")
+    switch.add_argument("--dry-run", action="store_true", default=argparse.SUPPRESS)
+
+    enable = subcommands.add_parser(
+        "enable", help="Add Skills without removing the current selection"
+    )
+    add_common_options(enable, suppressed=True)
+    enable.add_argument("skills", nargs="+")
+    enable.add_argument("--dry-run", action="store_true", default=argparse.SUPPRESS)
 
     add = subcommands.add_parser("add")
     add.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
@@ -370,7 +369,7 @@ def command_add(args):
         all_skills=bool(args.all_skills),
         quiet=bool(args.json),
     )
-    activation = f"seiton use {' '.join(names)}" if names else None
+    activation = f"seiton switch {' '.join(names)}" if names else None
     payload = {
         "source": args.source,
         "added": changes["added"],
@@ -426,18 +425,26 @@ def command_update(args):
     return 0
 
 
-def command_activate(args, project, locked, sources, managed):
-    profile = args.profile if args.command == "use" else None
-    skills = args.skills if args.command == "use" else []
-    if args.command == "use" and not profile and not skills:
-        raise ValueError("use requires Skill names or --profile")
+def command_selection(args, project, locked, sources, managed):
+    profile = args.profile if args.command == "switch" else None
+    skills = args.skills if args.command in {"switch", "enable"} else []
+    if args.command == "switch" and not profile and not skills:
+        raise ValueError("switch requires Skill names or --profile")
     names = requested_names(skills, profile)
+    if args.command == "enable":
+        status = inspect_selection(project, sources, managed, locked)
+        active = sorted({
+            entry["name"]
+            for layers in status["clients"].values()
+            for entry in layers["seiton"]
+        })
+        names = list(dict.fromkeys([*active, *names]))
     if not args.dry_run:
         # Conflicts must abort before restore can modify the catalog.
-        activation_plan(project, names, sources, managed)
+        plan_selection(project, names, sources, managed)
         restore_if_needed(names, locked, quiet=args.json)
         sources, managed = catalog(locked)
-    changed, changes = activate(
+    changed, changes = apply_selection(
         project, names, sources, managed, dry_run=args.dry_run
     )
     payload = {
@@ -452,7 +459,7 @@ def command_activate(args, project, locked, sources, managed):
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
-        print_activation(payload)
+        print_selection(payload)
     return 0
 
 
@@ -464,7 +471,7 @@ def command_check(args, project, locked, sources, managed):
         print(payload["repository"]["output"])
         print(
             "Project links: OK"
-            if status_is_healthy(payload["project"])
+            if selection_is_healthy(payload["project"])
             else "Project links: ERROR"
         )
     return 0 if payload["ok"] else 1
@@ -476,7 +483,7 @@ def command_project(args):
     sources, managed = catalog(locked)
 
     if args.command == "status":
-        payload = status_payload(project, sources, managed, locked)
+        payload = inspect_selection(project, sources, managed, locked)
         if args.json:
             print(json.dumps(payload, ensure_ascii=False, indent=2))
         else:
@@ -489,8 +496,8 @@ def command_project(args):
         else:
             print_catalog(payload)
         return 0
-    if args.command in {"use", "minimal"}:
-        return command_activate(args, project, locked, sources, managed)
+    if args.command in {"switch", "enable", "minimal"}:
+        return command_selection(args, project, locked, sources, managed)
     if args.command == "check":
         return command_check(args, project, locked, sources, managed)
     raise ValueError(f"unknown command: {args.command}")
@@ -502,10 +509,14 @@ def main(argv=None):
     args.command = args.command or "status"
 
     try:
-        if args.dry_run and args.command not in {"use", "minimal"}:
-            raise ValueError("--dry-run is supported only by use and minimal")
-        if args.command == "use" and args.profile and args.skills:
-            raise ValueError("use Skill names and --profile are mutually exclusive")
+        if args.dry_run and args.command not in {"switch", "enable", "minimal"}:
+            raise ValueError(
+                "--dry-run is supported only by switch, enable, and minimal"
+            )
+        if args.command == "switch" and args.profile and args.skills:
+            raise ValueError(
+                "switch Skill names and --profile are mutually exclusive"
+            )
         if args.command == "add":
             return command_add(args)
         if args.command == "restore":
