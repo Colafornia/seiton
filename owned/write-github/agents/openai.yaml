@@ -1,0 +1,4 @@
+interface:
+  display_name: "Write GitHub"
+  short_description: "Write clear, evidence-based GitHub issues and PRs"
+  default_prompt: "Use $write-github to draft a concise GitHub issue or pull request."

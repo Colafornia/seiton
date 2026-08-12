@@ -10,6 +10,9 @@ skills = [
   "tdd",
   "review-feedback",
   "wrap-up",
+  "to-tickets",
+  "structured-output",
+  "write-github"
 ]
 
 [profiles.skill-development]
@@ -29,4 +32,5 @@ skills = [
   "obsidian-vault",
   "teach",
   "writing-great-skills",
+  "to-tickets",
 ]

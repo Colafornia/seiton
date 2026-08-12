@@ -53,7 +53,7 @@
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/improve-codebase-architecture/SKILL.md",
-      "computedHash": "66e8a50c83c3c724fcfe0769701b665c56cec220cc4f49cc1aee8bdfc07de94a"
+      "computedHash": "bce096b49db40761adb1d5348f064c303fc152e4e50fc3fd81b79df8b6cf137f"
     },
     "learn": {
       "source": "tw93/Waza",
@@ -119,7 +119,7 @@
       "source": "Astro-Han/skills",
       "sourceType": "github",
       "skillPath": "skills/tdd/SKILL.md",
-      "computedHash": "4daa63d2d7963d77da158bc47bc9716ed9afee71b7741184e46813cc5fd51db1"
+      "computedHash": "a7d2bbc091bc4d8b04f9ee84aaf0f01f007e9f6a7773d56ad98d971f49b00a47"
     },
     "teach": {
       "source": "mattpocock/skills",
@@ -132,6 +132,12 @@
       "sourceType": "github",
       "skillPath": "skills/think/SKILL.md",
       "computedHash": "21f849896707959c1d4241715c8ecefdc4ee2a64601e201f5e1f0d2f8a79b665"
+    },
+    "to-tickets": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/to-tickets/SKILL.md",
+      "computedHash": "0349eee265e7005e667b4543de849672106c46d545e998f37d3319300bb07751"
     },
     "wayfinder": {
       "source": "mattpocock/skills",
