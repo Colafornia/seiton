@@ -10,8 +10,26 @@ else:
 CLIENTS = {"codex": ".agents", "claude": ".claude"}
 
 
+class SelectionConflict(ValueError):
+    def __init__(self, conflicts):
+        super().__init__("selected Skills conflict with existing Skills")
+        self.conflicts = conflicts
+
+
 def link_target(link):
     return (link.parent / os.readlink(link)).resolve()
+
+
+def conflict_entry(name, scope, client, path):
+    is_link = path.is_symlink()
+    return {
+        "skill": name,
+        "scope": scope,
+        "client": client,
+        "kind": "link" if is_link else "path",
+        "path": str(path),
+        "target": str(link_target(path)) if is_link else None,
+    }
 
 
 def skill_entry(path):
@@ -180,9 +198,9 @@ def plan_selection(project, names, sources, managed):
                 elif target in managed:
                     changes["replaced"].append(name)
                 else:
-                    conflicts.append(f"conflicting link: {link}")
+                    conflicts.append(conflict_entry(name, "project", client, link))
             elif link.exists():
-                conflicts.append(f"conflicting path: {link}")
+                conflicts.append(conflict_entry(name, "project", client, link))
             else:
                 changes["added"].append(name)
 
@@ -197,13 +215,15 @@ def plan_selection(project, names, sources, managed):
             for name in names:
                 conflict = global_path / name
                 if conflict.exists() or conflict.is_symlink():
-                    conflicts.append(f"conflicting global path: {conflict}")
+                    conflicts.append(
+                        conflict_entry(name, "global", client, conflict)
+                    )
         for values in changes.values():
             values.sort()
         plan[client] = changes
 
     if conflicts:
-        raise ValueError("; ".join(conflicts))
+        raise SelectionConflict(conflicts)
     return plan
 
 

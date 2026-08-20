@@ -22,6 +22,7 @@ if __package__:
     from .check import validate_workspace
     from .selection import (
         CLIENTS,
+        SelectionConflict,
         apply_selection,
         global_skills_paths,
         inspect_selection,
@@ -43,6 +44,7 @@ else:
     from check import validate_workspace
     from selection import (
         CLIENTS,
+        SelectionConflict,
         apply_selection,
         global_skills_paths,
         inspect_selection,
@@ -288,6 +290,46 @@ def print_selection(payload):
     )
 
 
+def print_selection_conflict(error, project, profile=None):
+    subject = f'profile "{profile}"' if profile else "selected Skills"
+    lines = [f"ERROR: cannot activate {subject}."]
+    for scope in ("project", "global"):
+        names = sorted({
+            item["skill"] for item in error.conflicts if item["scope"] == scope
+        })
+        if not names:
+            continue
+        lines += ["", f"Conflicts with existing {scope} Skills ({len(names)}):"]
+        lines += [f"  {name}" for name in names]
+
+    lines += ["", "Detected locations:"]
+    compact = len({item["skill"] for item in error.conflicts}) > 1
+    locations = set()
+    for item in error.conflicts:
+        client = f"{item['client'].capitalize()}:"
+        path = Path(item["path"])
+        if compact:
+            path = path.parent / "<name>"
+        location = f"{display_path(path, project)} ({item['kind']})"
+        if item["target"]:
+            target = Path(item["target"])
+            if compact and target.name == item["skill"]:
+                target = target.parent / "<name>"
+            location += f" -> {display_path(target, project)}"
+        locations.add((list(CLIENTS).index(item["client"]), client, location))
+    for _, client, location in sorted(locations):
+        lines.append(f"  {client:<8}{location}")
+
+    lines += [
+        "",
+        "No files were changed.",
+        "Seiton does not replace project-owned or global Skills.",
+        "Back up and remove the conflicting Skills before retrying.",
+        'Run "seiton status" to inspect ownership.',
+    ]
+    print("\n".join(lines), file=sys.stderr)
+
+
 def run_check(project, sources, managed, locked=None):
     repository = validate_workspace()
     status = inspect_selection(project, sources, managed, locked)
@@ -524,6 +566,21 @@ def main(argv=None):
         if args.command == "update":
             return command_update(args)
         return command_project(args)
+    except SelectionConflict as exc:
+        profile = args.profile if args.command == "switch" else None
+        if args.json:
+            print(json.dumps({
+                "error": {
+                    "code": "selection_conflict",
+                    "profile": profile,
+                    "changed": False,
+                    "conflicts": exc.conflicts,
+                }
+            }, ensure_ascii=False, indent=2))
+        else:
+            project = resolve_project(args.project or Path.cwd())
+            print_selection_conflict(exc, project, profile)
+        return 1
     except (OSError, KeyError, ValueError, subprocess.CalledProcessError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

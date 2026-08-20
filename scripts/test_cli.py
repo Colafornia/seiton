@@ -677,18 +677,61 @@ class UseSkillsTest(unittest.TestCase):
             self.assertFalse((project / ".agents").exists())
             self.assertFalse((project / ".claude").exists())
 
-    def test_conflict_changes_neither_client(self):
+    def test_conflict_error_is_grouped_and_changes_nothing(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
-            (project / ".agents/skills").mkdir(parents=True)
-            conflict = project / ".claude/skills/deliver"
-            conflict.mkdir(parents=True)
+            for name in ("deliver", "seiton"):
+                codex_skill = project / ".agents/skills" / name
+                codex_skill.mkdir(parents=True)
+                claude_skill = project / ".claude/skills" / name
+                claude_skill.parent.mkdir(parents=True, exist_ok=True)
+                claude_skill.symlink_to(codex_skill, target_is_directory=True)
 
-            result = run_cli(project, "switch", "deliver")
+            result = run_cli(project, "switch", "deliver", "seiton")
 
             self.assertEqual(result.returncode, 1)
-            self.assertFalse((project / ".agents/skills/deliver").exists())
-            self.assertTrue(conflict.is_dir())
+            self.assertIn(
+                "Conflicts with existing project Skills (2):\n"
+                "  deliver\n"
+                "  seiton",
+                result.stderr,
+            )
+            self.assertIn("Codex:  .agents/skills/<name> (path)", result.stderr)
+            self.assertIn(
+                "Claude: .claude/skills/<name> (link) -> .agents/skills/<name>",
+                result.stderr,
+            )
+            self.assertIn("No files were changed.", result.stderr)
+            for name in ("deliver", "seiton"):
+                self.assertTrue((project / ".agents/skills" / name).is_dir())
+                self.assertTrue((project / ".claude/skills" / name).is_symlink())
+
+    def test_json_conflict_error_is_structured(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            conflict = project / ".agents/skills/deliver"
+            conflict.mkdir(parents=True)
+
+            result = run_cli(project, "switch", "deliver", "--json")
+
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(result.stderr, "")
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["error"]["code"], "selection_conflict")
+            self.assertFalse(payload["error"]["changed"])
+            self.assertEqual(
+                payload["error"]["conflicts"],
+                [
+                    {
+                        "skill": "deliver",
+                        "scope": "project",
+                        "client": "codex",
+                        "kind": "path",
+                        "path": str(conflict.resolve()),
+                        "target": None,
+                    }
+                ],
+            )
 
     def test_global_conflict_prevents_restore_and_project_writes(self):
         with tempfile.TemporaryDirectory() as directory:
