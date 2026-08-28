@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cross-Model Code Review"
+  short_description: "Review code independently with multiple model families"
+  default_prompt: "Use $cross-model-code-review to review this change with independent models."

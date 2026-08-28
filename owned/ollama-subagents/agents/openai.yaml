@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ollama Subagents"
+  short_description: "Run isolated read-only agents through Ollama"
+  default_prompt: "Use $ollama-subagents to launch a read-only Ollama-backed agent."

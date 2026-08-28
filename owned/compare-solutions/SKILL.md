@@ -41,6 +41,22 @@ the proposal agents. Otherwise use at least two available independent agents or
 model contexts. Give every participant the same packet. They must not see each
 other's work.
 
+Let each participant explore independently, but keep tool output bounded:
+
+- do not print entire large files, the full repository diff, or unbounded
+  repository-wide search results;
+- start with `rg`, `git diff --stat` or `--name-only`, and targeted `sed -n`
+  ranges;
+- batch independent read-only checks into one tool round when supported;
+- establish relevance first, then expand the inspected range only when the
+  evidence can affect the decision.
+
+For an `Ollama model: <model>` entry, do not use a native custom-agent role.
+Resolve and read the sibling `ollama-subagents` Skill, then use its runner with
+a separate fresh run directory for each model. Start all participants before
+reading any proposal. If a run fails, record the model as unavailable instead
+of falling back to the parent's provider.
+
 Require each proposal to contain:
 
 ```
