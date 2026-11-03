@@ -1,18 +1,35 @@
 [profiles.solution-research]
-skills = ["compare-solutions", "parallel-research", "reference-repo"]
+skills = ["compare-solutions", "parallel-research", "reference-repo", "how"]
 
 [profiles.delivery]
 skills = [
+  "enzh-md",
   "deliver",
+  "goal-writer",
   "shape",
   "compare-solutions",
+  "how",
+  "architect",
   "debug",
   "tdd",
   "review-feedback",
   "wrap-up",
   "to-tickets",
   "structured-output",
-  "write-github"
+  "write-github",
+  "cross-model-code-review",
+  "ollama-subagents",
+  "pr-review",
+  "benchmark-checklist",
+  "create-verification-skill",
+  "takeaway"
+]
+
+[profiles.learn]
+skills = [
+  "teach",
+  "learn-anything",
+  "takeaway"
 ]
 
 [profiles.skill-development]
@@ -25,12 +42,17 @@ skills = [
   "diagnosing-bugs",
   "improve-codebase-architecture",
   "research",
-  "resolving-merge-conflicts",
   "wayfinder",
-  "batch-grill-me",
-  "edit-article",
-  "obsidian-vault",
   "teach",
-  "writing-great-skills",
   "to-tickets",
+]
+
+[profiles.company]
+skills = [
+  "codebase-design",
+  "improve-codebase-architecture",
+  "shape",
+  "debug",
+  "review-feedback",
+  "how"
 ]

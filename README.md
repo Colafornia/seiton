@@ -147,6 +147,30 @@ seiton switch --profile review
 Machine-specific overrides belong in the ignored `.agent/skillsets.toml`. A
 local profile replaces a shared profile with the same name.
 
+Skills that need machine-specific settings can also use user-wide configuration
+under `~/.agent/`. For example, `takeaway` reads `~/.agent/takeaway.toml` for
+all repositories and uses `<repo>/.agent/takeaway.toml` only when a project
+needs an override. This keeps a shared Obsidian vault configured once without
+putting its local path in a repository.
+
+The catalog includes selected Skills from
+[pstack-claude](https://github.com/michael-denyer/pstack-claude). The `delivery`
+profile adds `how`, `architect`, `benchmark-checklist`, and
+`create-verification-skill`; `solution-research` also includes `how`.
+`blast-radius` and `correct` are available for task-specific activation:
+
+```sh
+seiton enable blast-radius correct
+```
+
+Pstack's companion Skills and references stay in the catalog without enabling
+its `poteto-mode` router or installing plugin hooks. Resolve an activated
+Skill's symlink to its catalog directory before following relative references
+to a companion. `architect` proceeds from design into implementation by
+default; ask for `architect with checkpoint` when you want the design reviewed
+before implementation. Codex uses the bundled
+`poteto-mode/references/codex-tools.md` mapping for tools, models, and paths.
+
 Use `seiton enable SKILL...` to add Skills without removing the active
 selection. Use `seiton minimal` to remove the entire seiton-managed overlay
 while leaving other project Skills untouched.

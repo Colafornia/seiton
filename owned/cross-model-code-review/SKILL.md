@@ -2,8 +2,8 @@
 name: cross-model-code-review
 description: >
   Review one fixed change independently with multiple external model families,
-  then verify and consolidate their findings using the existing code-review
-  standards. Use when the user explicitly asks for cross-model or multi-model
+  then verify and consolidate their findings using the pr-review contract.
+  Use when the user explicitly asks for cross-model or multi-model
   code review, or when a high-risk change warrants independent reviewers. Do
   not use for routine review, solution comparison, or review adjudication.
 ---
@@ -15,23 +15,25 @@ inputs to the review, not votes.
 
 ## 1. Load the review contract
 
-Resolve and read the available `code-review` Skill. Prefer
-`<catalog-root>/local/code-review/SKILL.md` when it exists. Use its scope,
-Standards, Spec, Temporal correctness, evidence, and reporting rules as the
-single review contract. Stop if that Skill is unavailable.
+Resolve and read the available `pr-review` Skill and its
+`references/queue-and-publication.md` delegation guidance. Use its question
+chain, evidence, P0–P3 severity, and reporting rules as the single review
+contract. Stop if that Skill is unavailable.
 
 For this workflow, the external models are the independent reviewers. Do not
-recursively launch additional reviewers for the three axes.
+recursively launch additional reviewers.
 
 ## 2. Fix one review packet
 
-Resolve the fixed point or diff scope before launching reviewers. Build one
-packet containing only:
+Resolve the exact base/head or fixed patch snapshot before launching reviewers.
+A local patch is sufficient when no PR exists; mark unavailable PR metadata as
+gaps. Build one packet containing only:
 
-- the review scope or merge-base;
+- the fixed review scope, base/head or patch snapshot, and available PR facts;
 - goal, acceptance criteria, invariants, and exclusions when available;
 - verification already run;
-- paths to repository instructions and the resolved `code-review` Skill.
+- paths to repository instructions, the resolved `pr-review` Skill, and its
+  delegation reference.
 
 Do not include the implementer's rationale, parent findings, or a preferred
 outcome. Tell reviewers that known paths are non-exhaustive and that they must
@@ -49,15 +51,15 @@ Require bounded tool use:
 Every reviewer receives the byte-identical packet and must return:
 
 ```text
-Standards:
-Spec:
-Temporal correctness:
-Verification performed:
-UNVERIFIED:
+Facts:
+Problem:
+Solution:
+Findings:
+Next step:
 ```
 
-Each finding includes its location, evidence, impact, and severity. Explicitly
-say when an axis has no findings, is unavailable, or does not apply.
+Use `pr-review`'s requirements for each section and finding. Include performed
+verification and evidence gaps; explicitly report when no findings survive.
 
 ## 3. Launch blind external reviews
 
@@ -81,11 +83,14 @@ Normalize findings by affected behavior and location, then:
    findings;
 3. keep a minority finding when its evidence is stronger; never decide by
    model agreement, verbosity, or reputation;
-4. report supported findings under the three `code-review` axes, ordered by
-   severity, followed by verification and remaining uncertainty;
+4. consolidate one report in `pr-review`'s Facts → Problem → Solution → Findings
+   → Next step order, with findings ordered by severity, verification evidence,
+   and remaining uncertainty;
 5. disclose model IDs, run failures, and whether two independent model reviews
    actually completed.
 
 If no supported findings remain, say so and identify residual testing or
-evidence gaps. Done when every axis is accounted for and every reported finding
-has been independently verified.
+evidence gaps. Done when the problem, solution, and smallest complete solution
+have been assessed and every reported finding has been independently verified.
+Apply `pr-review`'s refresh and publication rules before acting on the report;
+running external reviewers grants no authority to publish or merge.
